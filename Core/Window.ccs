@@ -1,0 +1,84 @@
+//
+// Window.ccs
+//
+// Defines cleaner names for standard window operations, along with
+// a few extra features for window modification.
+//
+import Script
+import asm65816
+import TextRenderer
+
+
+command Open(n) {
+	window_open(n)
+}
+
+command Clear() {
+	"[18 06]"
+}
+
+command Close(n) {
+	Switch(n)
+	CloseTop()
+}
+
+command CloseTop() {
+	window_closetop()
+}
+
+command Switch(n) {
+	window_switch(n)
+}
+
+command SetSize(num, x, y, w, h) {
+	ROMTBL[0xC3E250, 8, num] =
+		"[{short x} {short y} {short w} {short h}]"
+}
+
+
+command SetTitle(n, text)
+{
+	settitle(n, text)
+}
+
+command OpenTitle(n, text)
+{
+	Open(n)
+	settitle(n, text)
+}
+
+//
+// Assembly patch: forces window title text to use VFW table
+//
+
+//ROM[0xC4456E] = {
+//	JSL(titlepatch)
+//}
+
+titlepatch:
+{
+	PHP
+	
+	// $02		= current character address, +1
+	// $04		= current character index
+	// $0a $0c	= $7E:86DE, the base address of the string?
+	
+	// Get current character number, -0x50
+	LDX_d	(0x02)
+	DEX
+	LDA_x	(0x0000)
+	AND_i	(0x00ff)
+	SEC
+	SBC_i	(0x50)
+	TAX
+	
+	// Load width from font table
+	LDA_xl	(0xE11F3A)
+	AND_i	(0x00FF)
+	INC	// +1 to match JHack's interpretation of the width
+
+	LDX_d	(0x14)	// text height
+	
+	PLP
+	RTL
+}

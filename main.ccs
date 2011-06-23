@@ -1,0 +1,44 @@
+//
+// Main routine
+//
+
+import "Core/Game.ccs"
+import "Core/Entity.ccs"
+import "Core/Script.ccs"
+import "Core/Window.ccs"
+
+import Scenario
+import Objects
+
+STARTUP(main)
+
+
+//
+// The entry point for the game.
+//
+main:
+    Game.Initialize()
+
+    Game.Visit( Scenario.CentralRoom )
+
+    //
+    // The main game loop
+    //
+    loop:
+        Game.ProcessInput()
+        goto    (loop)
+
+    return
+
+
+ROM[0xc7c588] = goto(debug)
+ROM[0xc7c59e] = goto(debug)
+
+debug:
+    "@It appears the text system crashed!" next
+    "@Attempting to reload..." next
+    Window.CloseTop()
+    Window.Open(8)
+    goto(loop)
+    end
+

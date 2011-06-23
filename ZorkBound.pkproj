@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<Project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Version>110</Version>
+  <Name>ZorkBound</Name>
+  <Author>(Your name here!)</Author>
+  <Description>(Brief description of this project goes here.)</Description>
+  <OutputFile>Zork.smc</OutputFile>
+  <OutputStart>15794176</OutputStart>
+  <OutputEnd>16318464</OutputEnd>
+  <SummaryFile>ZorkBound.summary.txt</SummaryFile>
+  <Files>
+    <string>main.ccs</string>
+    <string>Player.ccs</string>
+    <string>Scenario.ccs</string>
+    <string>Objects.ccs</string>
+  </Files>
+  <LibraryFiles />
+  <NoStandardLibs>false</NoStandardLibs>
+  <PrintRootTables>false</PrintRootTables>
+  <PrintJumpTables>true</PrintJumpTables>
+  <PrintCode>false</PrintCode>
+  <PrintAST>false</PrintAST>
+  <NoReset>true</NoReset>
+  <PreBuildStep>copy /Y Base.smc Zork.smc</PreBuildStep>
+</Project>

@@ -1,0 +1,253 @@
+//
+// ZorkBound
+//
+// Item methods.
+//
+// RESERVED REGISTERS: 225-229
+//
+
+
+import Script
+
+define loc_array = 0x316000
+define item_nodes = 0x316400
+
+
+define tvar0	= 225
+define tvar1	= 226
+define tvar2	= 227
+
+
+
+//
+// Function: SetLocation
+//
+// Places an item in a specified location.
+//
+// Parameters:
+//  $arg0 = location
+//  $arg1 = item to put in location
+//
+SetLocation:
+	// Firstly, we insert the location value into the location-list array,
+	// using the 24-bit unique insertion method. This will ignore the high
+	// byte of each entry (the node pointer) and simply return the address
+	// of the existing cell if this location is already listed.
+	
+	push	(arg1)
+	
+	copyvar	(arg1, arg0)
+	setvar	(arg0, loc_array)
+	invoke	(Array.InsertUnique24)
+		
+	// Now, $result contains the address of the desired location cell.
+	// The next step is to append the item to the location linked list.
+	
+	// The high byte of the value in the array is a list pointer!
+	copyvar	(var0, result)
+	addi	(var0,var0,3)
+
+	setvar	(arg0, item_nodes)	// node store base address
+	pload8	(arg1, var0)		// 8-bit pointer to linked list of items 
+	pull	(arg2)				// item to add to list
+	invoke	(List.PushFront)
+	pstore8	(result, var0)		// store new list pointer
+	
+	// And, that's it!
+	
+	return
+
+
+command SetLocationC(item,location)
+{
+	setvar(arg0, location)
+	setvar(arg1, item)
+	invoke(SetLocation)
+}
+
+command SetLocationV(item_reg, loc_reg)
+{
+	copyvar	(arg0, loc_reg)
+	copyvar	(arg1, item_reg)
+	invoke	(SetLocation)
+}
+
+command FindC(item)
+{
+	setvar(arg0, item)
+	invoke(Find)
+}
+
+
+
+//
+// Function: Remove
+//
+// Removes the specified item from the specified location.
+// Automatically updates the location's list pointer, so
+// there is no need to do this yourself.
+//
+// Parameters:
+//  $arg0 = location
+//  $arg1 = item to remove
+//
+RemoveFrom:
+{
+	copyvar	(tvar0, arg1)
+	
+	// get item list
+	copyvar	(arg1, arg0)
+	setvar	(arg0, loc_array)
+	invoke	(Array.Find24)
+	
+	// if the location isn't listed, it contains no items, so we're done.
+	beqi	(result2, 0, exit)
+	
+	// $arg1 = item list pointer
+	addi	(result2, result2, 3)
+	copyvar	(tvar1, result2)
+	pload8	(arg1, result2)
+	
+	copyvar	(arg2, tvar0)
+	
+	// Erase the value
+	setvar	(arg0, item_nodes)
+	invoke	(List.EraseValue)
+	
+	// Now result is the new list pointer. Store it.
+	pstore8	(result, tvar1)
+
+		
+exit:
+	return
+}
+
+command RemoveFromC( obj, loc )
+{
+	setvar	(arg0, loc)
+	setvar	(arg1, obj)
+	invoke	(RemoveFrom)
+}
+
+command RemoveFromV( obj_reg, loc_reg )
+{
+	copyvar	(arg0, loc_reg)
+	copyvar	(arg1, obj_reg)
+	invoke	(RemoveFrom)
+}
+
+
+//
+// Function: ForEachIn
+//
+// Calls a specified function for each item in an area.
+//
+// Parameters:
+//  $arg0 = the location
+//  $arg1 = function to call
+//
+// Return value:
+//  $result = the number of items iterated
+//
+ForEachIn:
+	push	(arg1)
+	
+	copyvar	(arg1, arg0)
+	setvar	(arg0, loc_array)
+	invoke	(Array.Find24)
+	
+	pull	(arg2)
+	
+	setvar	(result, 0)
+	beqi	(result2, 0, foreach_end)
+	
+	// $arg1 = item list pointer	
+	addi	(result2, result2, 3)
+	pload8	(arg1, result2)
+
+	
+	// Now call List.ForEachValue
+	setvar	(arg0, item_nodes)
+	invoke	(List.ForEachValue)	
+		
+	foreach_end:
+		return
+
+
+//
+// Function: Find
+//
+// Searches the entire world to find an item!
+//
+// Parameters:
+//  $arg0 = the item to locate
+//
+// Return value:
+//  $result = address of the location that has the item, or zero
+//            if the item does not exist in the world.
+//
+Find:
+	setvar	(result, 0)
+	
+	// Iterate over the location array
+	
+	// initial address = loc_array + 2
+	setvar	(var0, loc_array)
+	addi	(var0, var0, 2)
+	
+	// maximum address = loc_array + 2 + 4 * array_len
+	load16	(var1, loc_array)
+	muli	(var1, var1, 4)
+	add		(var1, var1, var0)
+	
+	
+	// Invariant arguments to List functions
+	copyvar	(arg2, arg0)
+	setvar	(arg0, item_nodes)
+	
+	
+	"@Oh, so many places to search." next
+	
+	find_loop:	
+		bgte	(var0, var1, find_endloop)
+			
+		// $var2 = loc_array[i].location
+		pload24	(var2, var0)
+		
+		"@There's the, uh, [1b 0e {byte var2}]..." next
+		
+		// $arg1 = loc_array[i].itemlist
+		addi	(var0, var0, 3)
+		pload8	(arg1, var0)
+		
+		" (Contents: "
+		push(arg2)
+		push(arg1)
+		setvar	(arg2, __printname)
+		invoke	(List.ForEachValue)
+		pull(arg1)
+		pull(arg2)
+		")" next
+		
+		// Search the list!
+		invoke	(List.FindValue)
+		bnei	(result, List.NOPTR, find_found)
+			
+		incr	(var0)
+		j		(find_loop)
+	find_endloop:
+		// Failure!
+		setvar	(result, 0)
+		return
+		
+	find_found:
+		// Success!
+		"@Oh! I found it." next
+		"@It was in [1b 0e {byte var2}]." next
+		copyvar	(result, var2)
+		return
+
+
+__printname:
+	"[1b 0e {byte arg0}], "
+	return

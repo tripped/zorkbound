@@ -1,0 +1,346 @@
+
+//
+// Some hacks to the text renderer
+//
+
+import asm65816
+
+
+
+// Window title manipulation
+
+// Apparently our extended character tile space overlaps
+// the space reserved for window titles. Let's try moving
+// window titles elsewhere!
+
+//
+// Adjust the window title graphics up by 0x380 bytes
+//
+ROM[0xC2031F] = { ADC_i	(0x7A80) }
+ROM[0xC443D3] = { LDA_i	(0x7A80) }
+
+//
+// Adjust the base tile number by 0x70
+//
+ROM[0xC10886] = { ADC_i (0x2070) }
+
+
+
+
+//
+// Relocated locked tiles map
+//
+ROM[0xC44B07] = { LDA_xl (locked_tiles) }
+
+locked_tiles:
+{
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 00 00 00 01]" 
+	"[01 01 01 01 01 00 00 00 00 00 00 00 00 00 00 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 00 00 00 00 00 00]" 
+	"[01 01 01 01 01 01 01 01 01 01 00 00 00 00 00 00]" 
+	"[01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+	//
+	// Extended space starts here.
+	//
+	// The first 167 tiles are window graphics and are
+	// locked. The remaining tiles are free for text.
+	//
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 01 01 01 01 01 01 01 01 01]" 
+	"[01 01 01 01 01 01 01 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]" 
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+}
+
+
+
+
+
+
+//
+// The pool allocation map is a bitfield, typically located at $1AD6.
+// We'll be expanding its size, so we'll move it to $FF80; it's small
+// and at the end of the bank, so it's probably okay there.
+//
+define usage_map	= 0xFF80
+define usage_count	= 0x80
+
+usage_default:
+	"[FF FF FF FF FF FF FF FF FF 8F 1F 80 FF 03 FF 03]"
+	"[01 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+
+	// Extended usage info
+	"[FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF]"
+	"[FF FF FF FF 7F 00 00 00 00 00 00 00 00 00 00 00]"
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+	"[00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00]"
+
+initialize_usage:
+{
+	REP		(0x31)
+	PHD
+	TDC
+	ADC_i	(0xFFF0)
+	TCD
+	LDA_i	(0)
+	STA_d	(0x0E)
+	BRA_a	(loopcheck)
+	
+loop:
+	ASL
+	TAX
+	LDA_xl	(usage_default)
+	STA_x	(usage_map)
+	LDA_d	(0x0E)
+	INC
+	STA_d	(0x0E)
+
+loopcheck:
+	CMP_i	(usage_count)
+	BCC_a	(loop)
+	
+	PLD
+	RTL
+
+}
+
+//
+// Overwrite the standard usage initializer with a call to ours
+//
+ROM[0xC43F53] = {
+	JSL		(initialize_usage)
+	RTL
+}
+
+// A trailing reference to the usage data location
+ROM[0xC44B21] = ADC_i(usage_map)
+
+
+
+
+//
+// Function: allocate_tile
+//
+// Allocates a graphics tile for text output. Normally limited to
+// a pool of 512 tiles.
+//
+allocate_tile:
+{
+	REP		(0x30)
+	LDY_i	(8)
+	LDA_i	(0xffff)
+	JMP		(endloop)
+
+// Find the first word, starting from data_loc, that isn't 0xFFFF
+loop:
+	INY
+	INY
+	
+	// If Y overflows the limit, abort text processor
+	CPY_i	(usage_count)
+	BEQ		(3)
+	JMP		(endloop)
+	
+	//LDY_i	(0x50)
+	
+	JSL		(0xC10000)
+	JSL		(0xC10BF8)
+	JSL		(0xC09451)
+	LDA_i	(0x0A2A)
+	JSL		(0xC08F68)
+
+endloop:
+	CMP_y	(usage_map)
+	
+	BNE		(3)
+	JMP		(loop)
+	
+	LDX_i	(0x001E)
+	LDA_y	(usage_map)
+		
+	JMP		(endloop2)
+
+
+// Find the first unset bit in this word and set it
+loop2:
+	DEX
+	DEX
+	ASL
+	
+endloop2:
+	BPL		(3)
+	JMP		(loop2)
+	
+	LDA_y	(usage_map)
+	ORA_xl	(0xC44C6C)
+	
+	STA_y	(usage_map)
+	STX_a	(0x288E)
+	LSR_a	(0x288E)
+
+// At this point,
+//  X = 2 * offset of the bit we just set
+//  Y = offset, from data_loc, of the word containing that bit
+
+	TYA
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC_a	(0x288E)
+	RTL
+}
+
+// Replace the original allocate_tile function with ours
+ROM[0xC40085] = {
+	JSL		(allocate_tile)
+	RTS
+}
+
+
+
+
+
+//
+// Function: tiles_to_vram
+//
+// Transfers a pair of specified tiles to VRAM based on the specified
+// coordinates.
+//
+// Parameters:
+//       A       xtile       x-coordinate - where to put the tiles?
+//       X       alloc1      allocated graphics tile index 1 (upper half)
+//       Y       alloc2      allocated graphics tile index 2 (lower half)
+//
+
+// Globals
+define dma_padr		= 0x0091	// (BYTE) Offset, from $8FB0, of stored DMA parameter byte?
+define dma_count	= 0x0092	// (WORD) DMA: number of bytes to transfer
+define addr_lo		= 0x0094	// (WORD) Low word of DMA source address
+define addr_hi		= 0x0096	// (WORD) High word of DMA source address
+define vram_dst		= 0x0097	// (WORD) DMA destination address, in VRAM
+
+// Immediate data
+define vram_base	= 0x6000	// (IMMD) Base address of tile destinations in VRAM (default 0x6000)
+
+// Functions:
+define dma_transfer	= 0xC08643	// Performs a DMA transfer with params specified by above globals
+
+
+
+tiles_to_vram:
+{
+	REP			(0x30)
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC_i		(0x3492)
+	STA_a		(addr_lo)		// addr_lo = 0x3492 + (xtile * 32)
+	
+	LDA_i		(0)
+	STA_a		(dma_padr)		// dma_padr = 0
+	
+	LDA_i		(16)
+	STA_a		(dma_count)		// dma_count = 16
+	
+	LDA_i		(0x007E)
+	STA_a		(addr_hi)		// addr_hi = 0x7E
+	
+	TXA
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC_i		(vram_base)		
+	STA_a		(vram_dst)		// vram_dst = vram_base + (alloc1 * 8)
+	PHY
+	JSL			(dma_transfer)	// dma_transfer()
+	
+	LDA_a		(addr_lo)
+	CLC
+	ADC_i		(16)
+	STA_a		(addr_lo)		// addr_lo += 16
+	
+	PLA
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC_i		(vram_base)
+	STA_a		(vram_dst)		// vram_dst = vram_base + (alloc2 * 8)
+	JSL			(dma_transfer)	// dma_transfer()
+	
+	LDA_a		(0x000D)
+	AND_i		(0x0080)
+	EOR_i		(0x0080)
+	STA_a		(0x9E2B)
+	
+	RTL
+	
+}
+
+ROM[0xC4002F] = {
+	JSL			(tiles_to_vram)
+	RTS
+}

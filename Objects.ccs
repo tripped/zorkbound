@@ -1,0 +1,615 @@
+//
+// Objects
+//
+// Definitions for the more general objects and items in the game.
+// Individual scenario scripts can also define their own special
+// items and objects.
+//
+
+import "Core/Game.ccs"
+import "Core/Entity.ccs"
+import "Core/Script.ccs"
+
+import Scenario
+
+//
+// A lockable, unlockable suitcase and its key
+//
+define suitcase_locked = flag count("flags",100)
+
+Suitcase: Container
+{
+	Name(Suitcase, "suitcase")
+	
+	OnLook(Suitcase, {
+		"@This is a plain black suitcase." next
+		"@It has a key lock next to the handle."
+	})
+	
+	OnOpen(Suitcase, {
+		if suitcase_locked
+		{
+			newline
+			"@You try to open the suitcase,| but it appears to be locked."
+		}
+		else
+		{
+			OpenThis()
+		}
+	})
+	
+	//
+	// You can only put stuff in the suitcase when it's unlocked!
+	//
+	OnDropIn(Suitcase, {
+		if suitcase_locked {
+			newline
+			"@You try to put the {PrintItemUsed} in the suitcase,|"
+			" but it appears to be locked."
+		} else {
+			DropInThis( ItemUsed )
+		}
+	})
+	
+	//
+	// Targeting the suitcase with the suitcase key unlocks it
+	//
+	OnTarget(Suitcase, {
+		if equali(ItemUsed, SuitcaseKey) {
+			newline
+			
+			if suitcase_locked {
+				"@The key fits!" next
+				sound(SND_GIFTOPEN)
+				"@You unlock the suitcase." prompt
+				OpenThis()
+				unset(suitcase_locked)
+			}
+			else {
+				sound(SND_GIFTOPEN)
+				"@You lock the suitcase." prompt
+				set(suitcase_locked)
+			}
+		}
+	})
+}
+
+
+SuitcaseKey: Item
+{
+	Name(SuitcaseKey, "small key")
+	OnUse(SuitcaseKey, { SelectTarget() })
+	OnLook(SuitcaseKey, {
+		"@This is a small,| plain-looking key."
+	})
+}
+
+
+
+
+//
+// Red book
+//
+define read_receipt = flag count("flags", 100)
+define key_taken = flag count("flags", 100)
+
+RedBook: Item {
+	Name(RedBook, "red book")
+	
+	OnLook(RedBook, {
+		"@A dusty tome bound in red leather." next
+		"@The title on the spine reads <My Life In The Apiary.>" next
+		"@In smaller letters below,|| <An autobiographical novel of romance||"
+		" and manual of effective bee-keeping,| by R. F. Butterfield.>"
+	})
+	
+	OnUse(RedBook, {
+		newline
+		"@You open the book to the first page and begin reading." next
+		Window.Clear()
+		"@Chapter 1 --| Sense and Sensibeelity." next
+		"     It was with a heavy heart that I donned my hood "
+		"and took up my smoker|| as I headed toward the hives "
+		"on that fateful October morning." next
+		"     My mind,| meanwhile,| was tormented by thoughts "
+		"of Maria." next
+		"     Did she know?|| Had she heeded my subtle intentions?|| "
+		"The gentle means by which I endeavored to win her heart?" next
+		"     I was but the son of a lowly beekeeper,| and she a "
+		"wealthy railroad heiress." prompt " One could hardly blame "
+		"her for scarcely acknowledging my existence." next
+		"     Perhaps it is true that I aspired above my station in life." next
+		"     But I knew that the bees,| my only true friends,| "
+		"were the key to making her finally understand my undying love." next
+		"@|.|.|." next
+		"@Wow,| that's terrible."
+	})
+	
+	OnOpen(RedBook, {
+		newline
+		if not read_receipt or key_taken {
+			"@You open the book to a random page." next
+			"@It contains a detailed diagram of a fixed-frame movable-comb beehive."
+		}
+		else {
+			"@Something written on the spine tugs at your memory." next
+			"@Which page do you want to see?" newline
+			
+			readnumber(3)
+			
+			if equali(result, 1) {
+				"@You turn to the first page." next
+				"@<Chapter 1 --| Sense and Sensibeelity.>" next
+				"@Good lord." next
+				"@You decide to stop reading for fear of encountering more bee puns."
+			}
+			else if equali(result, 4) or equali(result, 5) {
+				"@|.|././..." prompt " Ah ha!" next
+				"@There is a small key taped to page 4." next
+				"@You take the key."
+				
+				Item.SetLocationC( SuitcaseKey, Player.Self )
+				set(key_taken)
+			}
+			else if gtei(result, 362) {
+				"@The book doesn't seem to have that many pages."
+			}
+			else {
+				"@You try to read,| but your eyes start to glaze over." next
+				"@This book is |really| terrible."
+			}
+		}
+	})
+}
+
+//
+// Necronomicon
+//
+Necronomicon: Item
+{
+	Name(Necronomicon, "black book")
+	
+	OnLook(Necronomicon, {
+		"@This is a heavy book bound in ancient black leather." next
+		"@It is sealed closed with a leather strap." next
+		"@On the cover,| though you do not recognize the letters,| you can read:" next
+		"@<Necronomicon.>"
+	})
+	
+	OnTake(Necronomicon, {
+		TakeThis()
+		newline
+		"@You pick up the black book." next
+		"@You feel a dull pain in your fingertips."
+	})
+	
+	OnUse(Necronomicon, {
+		newline
+		"@The book is held closed by a strap." next
+		"@You would have to open it first."
+	})
+	
+	OnOpen(Necronomicon, {
+		newline
+		"@Somehow,| you feel that opening this book would be a bad idea." next
+		"@Are you sure you want to do that?" next
+		menu {
+			"Yes" : {
+				"@Banishing fear,| you open the dusty tome." next
+				music(0xBE)
+				"@You regret it instantly." next
+				"@The illustration on the first page defies your sanity to even"
+				" begin to make sense of its unspeakable horror." next
+				"@You move to close the cover,|| but you discover instead that your hands"
+				" have turned the page." next
+				sound(SND_PING)
+				"@You feel an ancient evil probing the edges of your mind." next
+				"@You try to resist,| but its strength proves too great." next
+				"@In moments,| you find yourself cast out of your own mind,|||"
+				text_blips(3)
+				music(4)
+				newline
+				"@Into the endless void."
+				"[1f 50]" wait
+			}
+			default "No" : {
+				"@It's probably for the best."
+			}
+		}
+	})
+}
+
+
+//
+// Sales receipt for the mirror
+//
+Receipt: Item
+{
+	Name(Receipt, "paper slip")
+	
+	OnLook(Receipt, {
+		"@This appears to be a sales receipt for a mirror from Marks and Spencer." next
+		"@The price is breathtaking." next
+		"@On the reverse,| however,| are the following words:" next
+		"@<Between 4 and 5 of R.F.B.>" 
+		sound(SND_CREEPY)
+		set( read_receipt )
+		next
+		"@Hmmmm."
+	})
+	
+	OnUse(Receipt, {
+		newline
+		"@It's a little late to use this receipt." next
+		"@You just shot the mirror to pieces,| and you're pretty sure that's not covered under the warranty."
+	})
+}
+
+
+
+
+//
+// Pencil
+//
+Pencil: Item {
+	Name(Pencil, "pencil")
+	
+	OnLook(Pencil, {
+		"@This is an ordinary No. 2 pencil." next
+		"@It's sharp, and the eraser is still fresh and soft." prompt
+		" Lucky you!"
+	})
+	
+	OnUse(Pencil, {
+		newline
+		"@You ponder what to write on." prompt
+		
+		if not SelectTarget() return
+		
+		newline
+		
+		if equal(Target, This) {
+			"@You attempt to use the pencil to write on the pencil." next
+			"@This turns out to be very hard." next
+			"@Perhaps if you had some kind of handheld portal device..."
+			return
+		}
+		if equal(Target, Player) {
+			"@You use the pencil to give yourself a wicked dragon tattoo." next
+			"@Like all good things,| though,| it will fade with time."
+			return
+		}
+		if equali(Target, Paper) {
+			Window.Clear()
+			"@Ah,| a blank piece of paper." next
+			"@You are only limited by your imagination!" next
+			"@What would you like to draw?" next
+			
+			menu 1
+			{
+				"A dinosaur!":
+				{
+					Window.Clear()
+					"@You strike a ferocious pose| and pour as much dinosaur ass-kicking"
+					" into the paper as you possibly can." next
+					"@The resulting drawing of a velociraptor tearing apart a zebra|"
+					" satisfies you on levels you don't feel entirely comfortable with."
+					
+					// Remove the targeted paper and replace it with a drawing of a dino
+					RemoveTarget()	
+					Item.SetLocationC( DinoDrawing, Player.Self )
+				}
+				
+				"A puppy!":
+				{
+					Window.Clear()
+					"@You attempt to draw a cute puppy." next
+					"@It doesn't quite turn out that well though."
+					
+					RemoveTarget()
+					Item.SetLocationC( PuppyDrawing, Player.Self )
+				}
+				
+				"An eldritch horror!":
+				{
+					Window.Clear()
+					music(0x85)
+					"@Fueled by a sudden and inexplicable inspiration,| you begin scrawling madly on the paper." next
+					"@It is quickly filled with complicated signs and patterns." next
+					"@You feel your sanity beginning to drain away." next
+					"@Horrible ancient evils vomit their malevolence onto the paper"
+					" through the vessel of your hand." next
+					"@All at once,| you know you have finished." next
+					"@Unable to bear it any longer,| you throw the paper to the floor." next
+					sound(SND_FIRE2)
+					"@Your pencil bursts into flames and is consumed."
+					music(4)
+					
+					RemoveTarget()
+					RemoveThis()
+					
+					setvar( Target, EldritchDrawing )
+					Item.SetLocationV( Target, PlayerLocation )
+				}
+			}
+			
+			getresult(result)
+			if equali(result, 0) {
+				return
+			}
+			
+			// Player can grab another sheet of paper from the stack now.
+			unset( has_paper )
+			
+			return
+		}
+		
+		"@You use the pencil to scribble on the {PrintTarget}." next
+		"@It doesn't mark very well though..."
+	})
+}
+
+
+//
+// Blank paper
+//
+Paper: Item
+{
+	Name(Paper, "blank paper")
+	
+	OnLook(Paper, {
+		"@A perfectly blank sheet of paper." next
+		"@You overwhelmed by the limitless possibilities it represents."
+	})
+	
+	OnUse(Paper, {
+		newline
+		"@Paper by itself isn't very useful." next
+		"@You need something you can use on the paper."
+	})	
+}
+
+
+DinoDrawing: Item
+{
+	Name(DinoDrawing, "dino drawing")
+	
+	OnLook(DinoDrawing, {
+		"@This is a kickass drawing of a dinosaur." next
+		"@RAWR!"
+	})
+}
+
+PuppyDrawing: Item
+{
+	Name(PuppyDrawing, "puppy drawing")
+	
+	OnLook(PuppyDrawing, {
+		"@This is a piece of paper with a puppy drawn on it." next
+		"@It should be adorable,| but you're not actually very good at drawing dogs."
+	})
+}
+
+EldritchDrawing: Item
+{
+	Name(EldritchDrawing, "dread symbol")
+	
+	OnLook(EldritchDrawing, {
+		"@Looking at this symbol makes you feel sick." next
+		"@You are soon forced to avert your eyes" prompt
+		" as you feel an ancient horror clawing at the edges of your sanity."
+	})
+	
+	OnUse(EldritchDrawing, {
+		Window.Clear()
+		"@You hold up the dread symbol." next
+		music(0x2A)
+		"@You feel a terrifying power emanating from it,|"
+		" and the paper becomes perceptibly hotter." next
+		
+		if equali(PlayerLocation, Bedroom)
+		{
+			sound(SND_PING)
+			"@You feel an answering presence in the room!" next
+			"@Suddenly,| you notice that a small point in the canopy of the bed is glowing." next
+			"@After only a few moments,| a small dark object burns a hole in the canopy and lands on the bed." next
+			"@It appears to be a black stone with a beta symbol carved into it." next
+			
+			set( canopy_burnt )
+			
+			music_effect(3)
+			pause(60)
+			sound(33)
+			"@The paper in your hand dissolves into dust."
+			music(4)
+			
+			RemoveThis()
+			Item.SetLocationC( BetaStone, Bed )
+		}
+		else if equali(PlayerLocation, Library) and not necronomicon_seen
+		{
+			sound(SND_PING)
+			"@You feel an answering presence in the room!" next
+			music_effect(3)
+			"@You notice that one of the books on the shelves seems to be glowing slightly." next
+			sound(17)
+			"@Suddenly,| it falls from the shelf and lands on the floor."
+			Item.SetLocationC( Necronomicon, Library )
+			set(necronomicon_seen)
+			music(4)
+		}
+		else
+		{
+			music_effect(3)
+			pause(60)
+			"@However,| it soon fades." next
+			music(4)
+			"@Maybe this isn't the place to use it?"
+		}
+	})
+}
+
+//
+// Pistol
+//
+Pistol: Item
+{
+	Name(Pistol, "pistol")
+	
+	OnLook(Pistol, {
+		"@This is a semiautomatic pistol." next
+		"@It has a handle,| and a trigger,| and bullets come out the end." next
+		"@If you knew more about guns you might appreciate its finer qualities,|"
+		" if it has any."
+	})
+	
+	OnOpen(Pistol, {
+		newline
+		"@You fumble with the magazine catch until it slides out." next
+		"@Yup,| it's loaded. " prompt
+		"Probably a round in the chamber,| too." next
+		"@You put the magazine back in."
+	})
+	
+	OnUse(Pistol, {
+		newline
+		
+		"@You flip off the safety and take aim." prompt
+		
+		if not SelectTarget() {
+			newline
+			"@|...But,| you think better of it."
+			return
+		}
+		
+		newline
+		
+		if equal(Target, This)
+		{
+			"@You try to aim the gun at itself,|"
+			" but your <unconventional geometry> skill is not sufficiently high."
+		}
+		else if equal(Target, Player)
+		{
+			"@Are you sure you want to do that?" next
+			
+			menu {
+				"Yes" : {
+					"@Frustrated and confused,| you decide to end it all." next
+
+					sound(74) prompt
+					music(7)
+					"@You are dead."		
+					"[1f 50]" wait
+				}
+				"No" : {
+					"@Good." next
+					"@Never give up;| that's the spirit!"
+				}
+			}
+		}
+		else if equali(Target, Scenario.Mirror)
+		{
+			sound(74) prompt
+		}
+		else
+		{
+			"@On second thought,| you decide not to shoot the {PrintTarget}."
+		}
+	})
+}
+
+
+
+
+//
+// The 4 KeyStones
+//
+
+AlphaStone: Item
+{
+	Name(AlphaStone, "alpha stone")
+	
+	OnLook(AlphaStone, {
+		"@A deep black stone with a single <[8b]> symbol carved on its face." next
+		"@Looking at it gives you a strange feeling in the back of your head."
+	})
+	
+	OnTake(AlphaStone, {
+		newline
+		text_blips(3)
+		sound(SND_MYSTERIOUS)
+		"@You take the Alpha Stone." next
+		TakeThis()
+		"@The stone feels slightly warm to the touch."
+		unset(alpha_seal)
+		text_blips(0)
+	})
+}
+
+BetaStone: Item
+{
+	Name(BetaStone, "beta stone")
+	
+	OnLook(BetaStone, {
+		"@A deep black stone with a single <[8c]> symbol carved on its face." next
+		"@Looking at it makes your fingers tingle for some reason."
+	})
+	
+	OnTake(BetaStone, {
+		newline
+		text_blips(3)
+		sound(SND_MYSTERIOUS)
+		"@You take the Beta Stone." next
+		TakeThis()
+		"@The stone feels strangely heavy."
+		unset(beta_seal)
+		text_blips(0)
+	})
+}
+
+GammaStone: Item
+{
+	Name(GammaStone, "gamma stone")
+	
+	OnLook(GammaStone, {
+		"@A deep black stone with a single <[8d]> symbol carved on its face." next
+		"@Looking at it makes your eyes water."
+	})
+	
+	OnTake(GammaStone, {
+		newline
+		text_blips(3)
+		sound(SND_MYSTERIOUS)
+		"@You take the Gamma Stone." next
+		TakeThis()
+		"@The stone feels icy cold to the touch."
+		unset(gamma_seal)
+		text_blips(0)
+	})
+}
+
+OmegaStone: Item
+{
+	Name(OmegaStone, "omega stone")
+	
+	OnLook(OmegaStone, {
+		"@A deep black stone with a single <[8e]> symbol carved on its face." next
+		"@Looking at it makes your heart beat faster."
+	})
+	
+	OnTake(OmegaStone, {
+		newline
+		text_blips(3)
+		sound(SND_MYSTERIOUS)
+		"@You take the Omega Stone." next
+		TakeThis()
+		"@The stone feels like nothing in your hand."
+		unset(omega_seal)
+		text_blips(0)
+	})
+}
+
+
+
+

@@ -1,0 +1,509 @@
+/////////////////////////////////////////////////////////////////////
+// EB++ Linked List Library
+//
+// RESERVED REGISTERS: 200 - 209
+//
+
+import script
+
+//
+// Using this library
+//
+// ========
+// OVERVIEW
+// ========
+//
+// To begin with, there is no need to create an empty list initially.
+// You may use 0 or List.NOPTR as the initial list pointer. A nil
+// pointer is the way an empty list is represented in this library.
+//
+// Similarly, the minimum size of a non-nil list is one element.
+//
+// Building lists requires that nodes be allocated from a 1KB memory
+// store that you specify. The node store is specified by its highest
+// address; it grows downwards. For example, if you specify the node
+// store address as $31:6400, nodes will be allocated between $31:6000
+// and $31:6400, starting at the top. This effectively means that any
+// given list domain is limited to 254 nodes (since two "invalid"
+// pointer values are reserved.)
+//
+// Every list function takes the node store top address as its first
+// parameter.
+//
+// Performing an operation on a list using a node store top address that
+// does not correspond to the one used to allocate the nodes in the list
+// is a HORRIBLE ERROR. Don't do that.
+//
+//
+// ===============================
+// BUILDING AND OPERATING ON LISTS
+// ===============================
+//
+// To build lists, use the PushFront, AppendValue, or AppendUnique
+// functions. In each case, you should take the function's return
+// value (the $result register) as the new pointer to the beginning
+// of the list.
+//
+// For example:
+//    setvar	(mylist, List.NOPTR) // initialize mylist to empty list
+//    
+//    setvar    (arg0, 0x317800)
+//    copyvar   (arg1, mylist)
+//    setvar    (arg2, 1337)
+//
+//    invoke    (List.PushFront)
+//
+//    copyvar   (mylist, result)     // mylist = List.PushFront(mylist, 1337)
+//
+// Every function that modifies the contents of a list returns the new
+// beginning of the list in $result. Always take this as the new list,
+// rather than the list pointer you passed to the function originally.
+//
+// To erase the first instance of a value from a list, use EraseValue.
+//
+// To iterate over the contents of a list, use ForEachValue.
+//
+//
+// ===========
+// PERFORMANCE
+// ===========
+//
+// Inserting an item at the front of a list has O(1) time cost in the
+// number of elements. Appending or erasing values has O(n) time cost.
+//
+// However, allocating the new nodes also has a cost, which in the worst
+// case is O(n) in the number of nodes allocated. This is because new
+// nodes are allocated sequentially to eliminate overhead.
+//
+// Because of this, node allocation is fastest when there is a fairly
+// high degree of fragmentation, i.e., many nodes have been deleted.
+// Thus the optimal usage profile should include plenty of deletions
+// as well as insertions. Otherwise, node allocation will slow down
+// future insertions.
+//
+
+
+
+//
+// Aliases for common temporary variables
+//
+define curr		= 200	//lvar0
+define prev		= 201	//lvar1
+define addr		= 202	//lvar2
+define value	= 203	//lvar3
+define currnext	= 204	//lvar4
+define first	= 205	//lvar5
+define last		= 206	//lvar6
+define temp		= 207	//lvar7
+define temp2	= 208	//lvar8
+define base		= 209	//lvar9
+
+
+// We consider a pointer value of 1 to be null. Zero is an invalid
+// value for a node link, since then a node containing the value 0
+// would look like "[00 00 00 00]", which is indistinguishable from
+// an unallocated slot!
+define NOPTR		= 1
+
+
+//
+// Function: AllocateNode
+//
+// Finds space for a linked list node. Node allocation proceeds from
+// a "top" address of a user-specified node store and grows downward.
+//
+// Parameters:
+//  $arg0 = base (top) address of node store
+//
+// Return value:
+//  $result = address of a free node slot.
+//
+AllocateNode:
+	// Begin at top-4 and work down until we find a NULL slot.
+	copyvar	(result, arg0)
+	alloc_loop:
+		addi	(result,result,-4)
+		pload32	(temp,result)
+		bne		(zero,temp,alloc_loop)
+	
+	// Initialize the slot to have NULL pointer
+	setvar		(temp,0x01000000)
+	pstore32	(temp,result)
+	return
+
+
+
+//
+// Function: PushFront
+//
+// Inserts a 24-bit value at the front of a given list. Generally much
+// faster than appending, although node allocation _always_ has worst-
+// case linear cost.
+//
+// Parameters:
+//  $arg0 = top address of node store
+//  $arg1 = 8-bit pointer to list
+//  $arg2 = 24-bit value to insert
+//
+// Return value:
+//  $result = 8-bit pointer to the new list beginning.
+//
+PushFront:
+	invoke	(AllocateNode)
+	
+	// Translate 0->NOPTR
+	bnei	(arg1, 0, pushfront_store)
+		setvar(arg1, NOPTR)
+	pushfront_store:
+	
+	// Store data and pointer to original list
+	pstore24(arg2, result)
+	addi	(addr, result, 3)
+	pstore8	(arg1, addr)
+	
+	// Form and return 8-bit pointer to new node
+	addi	(result, result, 1024)
+	sub		(result, result, arg0)
+	shr		(result)
+	shr		(result)
+	
+	return
+	
+	
+
+//
+// Function: AppendUnique
+//
+// Appends a 24-bit value to the list, only if the list does not
+// already contain the value.
+//
+// Parameters:
+//  $arg0 = top address of node store
+//  $arg1 = 8-bit pointer to list
+//  $arg2 = 24-bit value to append
+//
+// Return value:
+//  $result = 8-bit pointer to the beginning of the list, which will
+//            have changed if the list was empty before appending.
+//
+AppendUnique:
+	push	(arg1)
+	invoke	(FindValue)
+
+	bnei	(result, NOPTR, appendu_exists)
+
+	copyvar	(arg1, result2)
+	invoke	(AppendValue)
+
+	appendu_exists:
+		pull	(arg1)
+		beqi	(arg1, 0, appendu_end)
+		beqi	(arg1, NOPTR, appendu_end)
+		copyvar	(result, arg1)
+
+	appendu_end:
+		return
+
+
+
+
+
+//
+// Function: AppendValue
+//
+// Appends a 24-bit value to the specified list.
+//
+// Parameters:
+//  $arg0 = base (top) address of node store
+//  $arg1 = 8-bit word-aligned pointer to list
+//  $arg2 = 24-bit value to append
+//
+// Return value:
+//  $result = 8-bit pointer to the list
+//  $result2 = 8-bit pointer to the appended node
+//
+AppendValue:
+	// if curr is 0 or NOPTR, all we do is return a new node
+	beqi	(arg1, 0, append_null)
+	beqi	(arg1, NOPTR, append_null)
+	
+	copyvar	(curr, arg1)
+	copyvar	(first, curr)
+	
+	append_loop:
+	
+		// Form effective address
+		muli	(addr, curr, 4)
+		add		(addr, addr, arg0)
+		addi	(addr, addr, -1024)
+	
+		// Load "curr.next" pointer
+		addi	(addr, addr, 3)
+		pload8	(currnext,addr)
+	
+		beqi	(currnext,NOPTR,append_endloop)
+		
+		// curr = curr.next
+		copyvar	(curr, currnext)
+		j		(append_loop)
+	
+	append_endloop:
+	
+	// Now curr is a pointer to the last node,
+	// and addr is the address of that node's "next" field.
+	
+	// Allocate a new cell, store the value in it, and
+	// copy its address to currnext.
+	
+	push	(addr)
+		
+	invoke	(AllocateNode)
+	pstore24(arg2, result)
+	
+	// Form 8-bit pointer
+	addi	(result,result,1024)
+	sub		(result,result,arg0)
+	shr		(result)
+	shr		(result)
+	
+	pull	(addr)
+	pstore8	(result, addr)
+	
+	// Return (list,newnode)
+	copyvar	(result2, result)
+	copyvar	(result, first)
+	
+	return
+	
+	
+  append_null:
+
+	invoke	(AllocateNode)
+	pstore24(arg2, result)
+	
+	// Form 8-bit pointer
+	addi	(result,result,1024)
+	sub		(result,result,arg0)
+	shr		(result)
+	shr		(result)
+
+	return
+
+
+
+
+//
+// Function: FindValue
+//
+// Determines if the given list contains the given 24-bit value.
+//
+// Parameters:
+//  $arg0 = top address of node store
+//  $arg1 = 8-bit pointer to list
+//  $arg2 = 24-bit value to find
+//
+// Return value:
+//  $result = 8-bit pointer to found node, or NOPTR if value not in list.
+//  $result2 = if $result is NOPTR, this contains an 8-bit pointer to the
+//             last node in the list, or NOPTR if the list is empty.
+//
+FindValue:
+	beqi	(arg1, 0, findv_notfound)
+	beqi	(arg1, NOPTR, findv_notfound)
+		
+	copyvar	(base, arg0)
+	copyvar	(curr, arg1)
+	
+	findv_loop:
+		muli	(addr, curr, 4)
+		add		(addr, addr, base)
+		addi	(addr, addr, -1024)
+		
+		pload24	(value, addr)
+		
+		beq		(value,arg2,findv_found)
+		
+		// Load "curr.next" pointer
+		copyvar	(last, curr)
+		addi	(addr, addr, 3)
+		pload8	(curr, addr)
+
+		// If not null, continue looping
+		bnei	(curr, NOPTR, findv_loop)
+
+	findv_notfound:
+		setvar	(result, NOPTR)
+		copyvar	(result2, last)
+		return
+		
+	findv_found:
+		copyvar	(result, curr)
+
+	findv_end:
+	return
+
+
+
+
+
+//
+// Function: ForEachValue
+//
+// Calls a specified function for each value in the list. When the function
+// is called, $arg0 is the value, $arg1 indicates whether it's the first item
+// in the list, and $arg2 indicates whether it's the last.
+//
+// Parameters:
+//  $arg0 - top address of node store
+//  $arg1 - 8-bit pointer to list
+//  $arg2 - pointer to function to call
+//
+// Return value:
+//  $result = number of values iterated
+//
+ForEachValue:
+	setvar	(temp2, 0)	// count = 0
+	
+	beqi	(arg1, 0, foreachv_end)
+	beqi	(arg1, NOPTR, foreachv_end)
+		
+	copyvar	(base, arg0)
+	copyvar	(curr, arg1)
+	copyvar	(temp, arg2)
+	
+	setvar	(arg1, 1)	// is_first = true	
+	
+	foreachv_loop:
+		// Form effective address
+		muli	(addr, curr, 4)
+		add		(addr, addr, base)
+		addi	(addr, addr, -1024)
+		
+		// Load value, call function
+		pload24	(arg0, addr)
+		
+		// Load "curr.next" pointer
+		addi	(addr, addr, 3)
+		pload8	(curr, addr)
+		
+		// is_last = NEXTPTR == NOPTR
+		eqi		(curr, NOPTR)
+		getresult(arg2)
+		
+		pinvoke	(temp)
+		
+		setvar	(arg1, 0)	// is_first = false
+
+		// If not null, continue looping
+		incr	(temp2)
+		bnei	(curr, NOPTR, foreachv_loop)
+		
+	// Restore arg0.
+	// For convenience, all List functions preserve arg0 as the node store
+	// base address, so users don't have to reload it all the time.
+	copyvar	(arg0, base)
+
+  foreachv_end:
+  	copyvar	(result, temp2)
+	return
+
+
+
+//
+// Function: EraseValue
+//
+// Removes the first instance of the specified 24-bit value from the
+// specified linked list. Returns the address of the first node of the
+// resulting list. Returns NOPTR if the operation made the list empty.
+//
+// Parameters:
+//  $arg0 = base (top) address of node store
+//  $arg1 = 8-bit word-aligned pointer to list
+//  $arg2 = 24-bit value to remove from the list
+//
+// Return value:
+//  $result = 8-bit word-aligned pointer to list start
+//
+
+EraseValue:
+	beqi	(arg1, 0, erase_end)
+	beqi	(arg1, NOPTR, erase_end)
+
+	copyvar	(base, arg0)
+	copyvar	(curr, arg1)
+
+	addi	(base,base,-1024)
+	setvar	(prev, NOPTR)
+
+	erase_loop:
+		// Form effective address of "current" node
+		muli	(addr, curr, 4)
+		add		(addr, addr, base)
+
+		// Load the node's value
+		pload24	(value, addr)
+		
+		// Load its "next" link
+		addi	(addr, addr, 3)
+		pload8	(currnext, addr)
+		
+		// If the value matches, we've found the node to delete
+		beq		(value, arg2, erase_endloop)
+
+		// Otherwise, update prev and curr and continue looping,
+		// unless we've hit the end of the list.
+		copyvar	(prev, curr)
+		copyvar	(curr, currnext)
+		//" next: " printh(currnext,0) next
+		beqi	(curr, NOPTR, erase_end)
+		j		(erase_loop)
+	erase_endloop:
+	
+
+	// delete the current node	
+	addi	(addr,addr,-3)
+	pstore32(zero, addr)
+	
+	// Check to see if we deleted the first node in the list
+	bnei	(prev, NOPTR, erase_notfirst)
+		copyvar	(result, currnext)
+		return
+		
+	// Otherwise, update prev.next before returning
+	erase_notfirst:
+		muli	(addr, prev, 4)
+		add		(addr, addr, base)
+		addi	(addr, addr, 3)
+		
+		pstore8	(currnext, addr)
+		
+	erase_end:
+		copyvar	(result, arg1)
+		return
+
+
+
+
+//
+// Function: Print
+//
+// Prints every 24-bit number in a specified list.
+//
+// Parameters:
+//  $arg0 = top address of node store
+//  $arg1 = 8-bit pointer to list
+//
+Print:
+	setvar	(arg2, __printhelper)
+	invoke	(ForEachValue)
+	return
+
+
+//
+// Function: __printhelper
+//
+__printhelper:
+	printd	(arg0, 0)
+	", "
+	return
+

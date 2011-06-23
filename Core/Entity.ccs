@@ -1,0 +1,476 @@
+/////////////////////////////////////////////////////////////////////
+//
+// Entity class definitions
+//
+// These are the basic templates for collections of data and
+// functions that define game entities.
+//
+
+import Script
+import Game
+
+
+//
+// Entity data and function slots
+//
+define SLOT = "[00 00 00 00]"
+
+define NAME		= 0			// Pointer to string containing object's name
+define FLAG		= 1			// Event flag used to control initialization of this object
+define MOVABLE	= 2			// Boolean value indicating if the object can be picked up
+							//  TODO: will likely be deprecated in favor of a WEIGHT attribute
+define OPENABLE	= 3			// Boolean value indicating if the object is a container
+
+define ALWAYSOPEN = 4		// Boolean indicating if this object's contents are immediately visible
+
+define OBJECTS	= 5			// Pointer to a null-terminated list of pointers to the objects
+							//  that are permanently members of this entity (usually a Location)
+							
+define PLACEMENT= 6			// A string used to describe placement
+define EXITS	= 9			// DEPRECATED
+
+
+define INIT		= 10		// Called for locations when they are first visited
+define LOOK		= 11		// Called when an object is examined
+define TAKE		= 12		// Called when the player tries to take an object
+define USE		= 13		// Called when the player tries to use an object
+define TARGET	= 14		// Called when an object is the target of another object being used (?)
+define OPEN		= 15		// Called when the player tries to open an object
+define GLANCE	= 16		// Called when an object is "glanced at", i.e., when describing the environs
+define DROPIN	= 17		// Called when the player tries to put an item inside this object
+
+define LISTEXITS = 19		// Called to enumerate exits from the current location
+define LISTOBJECTS = 20		// Called to enumerate objects in a scene
+
+define Yes		= 1
+define No		= 0
+
+command Entity {
+	// DATA
+	SLOT	// 0 NAME
+	SLOT	// 1 FLAG
+	SLOT	// 2 MOVABLE
+	SLOT	// 3 OPENABLE
+	SLOT	// 4 ALWAYSOPEN
+	SLOT	// 5 OBJECTS (permanent sub-objects)
+	SLOT	// 6 PLACEMENT
+	SLOT
+	SLOT
+	SLOT	// 9 EXITS
+	
+	// FUNCTION TABLE
+	SLOT	// INIT
+	SLOT	// LOOK
+	SLOT	// TAKE
+	SLOT	// USE
+	SLOT	// TARGET
+	SLOT	// OPEN
+	SLOT	// GLANCE
+	SLOT	// DROPIN
+	SLOT
+	SLOT	// LISTEXITS
+	SLOT	// LISTOBJECTS
+	SLOT	// TICK
+}
+
+
+//
+// Calls the specified slot of the specified entity.
+//
+// Parameters:
+//  $arg0 - entity address
+//  $arg1 - function slot to call
+//
+CallEntitySlot:
+	copyvar	(This, arg0)
+	
+	// $arg1 = MEMWORD[entity + 4 * slot]
+	shl		(arg1)
+	shl		(arg1)
+	add		(arg1,arg1,arg0)
+	pload32	(arg1,arg1)
+	// $arg1 is now the function address in the specified slot
+	if not equali(arg1,0) {
+		pinvoke	(arg1)
+		returnval(1)
+	}
+
+	returnval(0)
+
+
+
+//
+// Retrieves data from the specified slot of the specified entity.
+//
+// Parameters:
+//  $arg0 - entity address
+//  $arg1 - data slot
+//
+GetEntityData:
+	shl		(arg1)
+	shl		(arg1)
+	add		(arg1,arg1,arg0)
+	pload32	(result,arg1)
+	return
+
+
+
+
+//
+// Sets the data value of a given entity slot
+//
+command Data(ent, slot, d) {
+	ROMTBL[ent, slot, 4] = d
+}
+
+//
+// Assigns a function string to a given entity slot
+//
+command Function(ent, slot, fn) {
+	ROMTBL[ent, slot, 4] = function
+	
+	function:
+		fn
+		return	// just in case?
+}
+
+
+//
+// Some more specific semantic shortcuts:
+//
+
+// Sets the name of an entity
+command Name(ent, n) {
+	Data(ent, NAME, namestr)
+	
+	// Embed the string with an internal label
+	namestr:
+		n
+		eob
+}
+
+
+// Sets the initialization flag for an entity
+command Flag(ent, f) {
+	Data(ent, FLAG, f)
+}
+
+
+// Sets whether an entity is movable
+command Movable(ent, m) {
+	Data(ent, MOVABLE, m)
+}
+
+
+// Sets whether an entity can be opened
+command Openable(ent, o) {
+	Data(ent, OPENABLE, o)
+}
+
+// Marks an entity as a container
+command MakeContainer(ent) {
+	Openable(ent, Yes)
+}
+
+
+// Sets whether an entity is permanently "open"; that is,
+// whether items in it are considered part of the scenery.
+command AlwaysOpen(ent, o) {
+	Data(ent, ALWAYSOPEN, o)
+}
+
+
+
+command ListObjects(ent, objs) {
+	Function(ent, LISTOBJECTS, objs)
+}
+
+
+// Sets the placement string for an object that can hold items.
+// E.g., " on the floor", " on the ground", etc.
+command Placement(ent, pstr) {
+	Data(ent, PLACEMENT, placement)
+	placement:
+		pstr
+		0
+}
+
+
+// Sets an exit-listing function for the specified location
+command ListExits(ent, exits) {
+	Function(ent, LISTEXITS, exits)
+}
+
+
+// Sets the function string to be called on initialization
+command OnInitialize(ent, fn) {
+	Function(ent, INIT, fn)
+}
+
+
+// Sets the function string to be called to describe an entity
+command OnLook(ent, fn) {
+	Function(ent, LOOK, fn)
+}
+
+command OnGlance(ent, fn) {
+	Function(ent, GLANCE, fn)
+}
+
+
+// Sets the function string to be called to "take" an entity
+command OnTake(ent, fn) {
+	Function(ent, TAKE, fn)
+}
+
+
+// Sets the function string to be called to "open" an entity
+command OnOpen(ent, fn) {
+	Function(ent, OPEN, fn)
+}
+
+// Sets the function to be called when the entity is used
+command OnUse(ent, fn) {
+	Function(ent, USE, fn)
+}
+
+// Sets the function to be called when the entity is targeted
+command OnTarget(ent, fn) {
+	Function(ent, TARGET, fn)
+}
+
+// Sets the function to be called when an item is dropped in/on an entity
+command OnDropIn(ent, fn) {
+	Function(ent, DROPIN, fn)
+}
+
+// Sets the function to be called after any action is performed.
+command OnTick(ent, fn) {
+	Function(ent, TICK, fn)
+}
+
+
+
+//
+// "Location" entity class
+//
+command Location {
+	// Data
+	SLOT		// Name
+	SLOT		// Flag
+	No			// Movable
+	Yes			// Container
+	No			// Open
+	SLOT		// Objects
+	loc_place	// Placement, by default just "on the floor"
+	SLOT
+	SLOT
+	SLOT		// EXITS
+	
+	// Functions
+	SLOT		// init
+	SLOT		// look
+	loc_take	// Default "you can't take the environs!" message
+	loc_use		// Default "nothing happens" message
+	SLOT
+	loc_open	// Default "you can't _open_ the environs" message
+	SLOT
+	loc_dropin	// 
+	SLOT
+	SLOT		// Exits
+	SLOT		// Objects
+	SLOT		// TICK
+}
+
+loc_place: " on the floor" eob
+
+loc_take:
+	newline
+	"@You can't take the environs. " next
+	"@Who do you think you are,| M.C. Escher?"
+	return
+	
+loc_use:
+	newline
+	"@You try to use the environs, but nothing happens." next
+	"@You suddenly wonder why you thought that would work."
+	return
+	
+loc_open:
+	newline
+	"@You can't open the environs." next
+	"@They appear to be too solidly constructed for that."
+	return
+	
+	
+loc_dropin:
+	DropInThis( ItemUsed )
+	return
+
+
+
+//
+// "Item" entity class
+//
+// These can be taken by the player, carried, dropped, and used, to various effect.
+//
+command Item {
+	// Data
+	SLOT	// Name
+	SLOT	// Flag
+	Yes		// Movable
+	SLOT	// Openable - individual item can specify
+	No		// Items aren't "always-open"
+	SLOT
+	SLOT
+	SLOT
+	SLOT
+	SLOT
+	
+	// Functions
+	SLOT		// Init
+	item_look	// Look
+	item_take	// default - "you take the <item>" - can be overridden
+	item_use	// default - "nothing happens" message - should be overridden
+	SLOT		//
+	item_open	// default - "you cannot open the <item>"
+	item_glance	// default - prints name of object with indefinite article
+	item_dropin	//
+	SLOT		//
+	SLOT		// TICK
+}
+
+item_look:
+	"@This is {PrintThisIndefinite}."
+	return
+	
+item_glance:
+	"{PrintThisIndefinite}"
+	return
+
+item_take:
+	newline
+	"@You take the {PrintThis}."
+	TakeThis()
+	return
+	
+item_use:
+	newline
+	"@You're not quite sure what to do with the {PrintThis}."
+	return
+	
+item_open:
+	copyvar	(arg0, This)
+	setvar	(arg1, OPENABLE)
+	invoke	(GetEntityData)
+	
+	if istrue(result) {
+		OpenThis()
+	}
+	else {
+		newline
+		"@There doesn't seem to be any way to open the {PrintThis}."
+	}
+	return
+	
+item_dropin:
+	// By default, items you try to put on a non-container fall off
+	DropOnFloor( ItemUsed )
+	return
+
+
+
+//
+// "Container" entity class.
+//
+// Like Item, but openable by default.
+//
+command Container
+{
+	// Data
+	SLOT	// Name
+	SLOT	// Flag
+	Yes		// Movable
+	Yes		// Is container
+	No		// Items aren't "always-open"
+	SLOT
+	container_place	// "in the <container>"
+	SLOT
+	SLOT
+	SLOT
+	
+	// Functions
+	SLOT		// Init
+	item_look	// Look
+	item_take	// default - "you take the <item>" - can be overridden
+	item_use	// default - "nothing happens" message - should be overridden
+	SLOT		//
+	item_open	// default - "you cannot open the <item>"
+	item_glance	// 
+	container_dropin		//
+	SLOT
+	SLOT		// TICK
+}
+container_place: " in the {PrintThis}" eob
+
+container_dropin:
+	DropInThis( ItemUsed )
+	return
+
+
+
+//
+// "Furniture" entity class
+//
+// These are fixtures within a location that serve as descriptive objects
+// and drop-off points for items.
+//
+command Furniture {
+	// Data
+	SLOT	// Name
+	No		// Flag
+	No		// Movable
+	Yes		// Container
+	Yes		// Always open
+	SLOT
+	SLOT
+	SLOT
+	SLOT
+	SLOT	// EXITS
+	
+	// Functions
+	SLOT		// init
+	SLOT		// look
+	furn_take	// Default "you can't take this heavy piece of furniture!" message
+	furn_use	// Default "nothing happens" message
+	SLOT
+	furn_open	// Default "you can't _open_ the furniture" message
+	furn_glance		
+	furn_dropin
+	SLOT
+	SLOT		// TICK
+}
+
+furn_take:
+	newline
+	"@You can't take that.| It's much too big." next
+	"@Anyway, it seems to be bolted down."
+	return
+
+furn_use:
+	newline
+	"@You aren't sure how to use the {PrintThis()}."
+	return
+	
+furn_open:
+	newline
+	"@There doesn't seem to be any way to open the {PrintThis()}."
+	return
+
+furn_glance:
+	"{PrintThisIndefinite}"
+	return
+	
+furn_dropin:
+	DropInThis( ItemUsed )
+	return

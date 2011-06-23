@@ -1,0 +1,258 @@
+///////////////////////////////////////////////////////////////////////////////
+//
+// EB++ Arrays
+//
+// RESERVED REGISTERS: 210 - 219
+//
+
+import script
+
+
+
+// Some aliases for common parameters and temporary variables
+define array	= arg0
+define value	= arg1
+define elements	= 210	//lvar0
+define low		= 211	//lvar1
+define high		= 212	//lvar2
+define mid		= 213	//lvar3
+define midval	= 214	//lvar4
+define arrval	= 215	//lvar5
+define length	= 216	//lvar6
+define index	= 217	//lvar7
+define pos		= 218	//lvar8
+define pos2		= 219	//lvar9
+
+
+
+//
+//  $arg0 = array
+//  $arg1 = index
+//
+Get:
+	addi	( arg0, arg0, 2 )
+	muli	( arg1, arg1, 4 )
+	add		( arg1, arg1, arg0 )
+	pload32	( result, arg1 )
+	return
+	
+
+//
+// $arg0 = array
+// 
+Length:
+	addi	( arg0, arg0, 2)
+	pload16	( result, arg0 )
+	return
+	
+
+command GetAtC(d, array, i) {
+	
+}
+
+command GetLengthC(d, array) {
+	setvar	(pos, array)
+	addi	(pos, pos, 2)
+	pload16	(d, pos)
+}
+	
+
+
+//
+// Iterative binary search function, 24-bit.
+// Finds a value in the low-order 24 bits of the 32-bit elements
+// of an array. This function is intended to support an array
+// of linked-list cells, hence the value search leaves the high
+// 8 bits (the 'next' field) unconsidered.
+//
+// Parameters:
+//  $arg0 = 32-bit array to search
+//  $arg1 = 24-bit value to search for
+//
+// Return value:
+//  $result = index of found cell
+//  $result2 = address of found cell
+//
+Search24:
+	// low = 0
+	setvar	( low, 0 )
+
+	// high = size
+	pload16	( high, array )
+	add		( high, high, low )
+	
+	// Elements start at array+2
+	addi	( elements, array, 2 )
+
+
+	bs_loop:
+
+	// while (low < high) {
+	bgte	(low, high, bs_endloop)
+
+		// mid = low + ((high - low) / 2)
+		sub		(mid, high, low)
+		shr		(mid)
+		add		(mid, mid, low)
+
+		// load Array[mid]
+		copyvar	(midval, mid)
+		shl		(midval)
+		shl		(midval)
+		add		(midval, midval, elements)
+		pload24	(midval, midval)
+
+
+		// if (Array[mid] < value)
+		//    low = mid + 1
+		// else
+		//    high = mid
+		bgte	(midval, value, bs_searchlower)
+			addi	(low, mid, 1)
+			j		(bs_continue)
+		bs_searchlower:
+			copyvar	(high, mid)	
+
+		bs_continue:
+			j	(bs_loop)
+
+	bs_endloop:
+	// }
+
+	copyvar	(result, low)
+	
+	muli	(result2, result, 4)
+	add		(result2, result2, elements)
+	
+	return
+
+
+//
+// Function: Find24
+//
+// Like Search24, but returns -1 and NULL if the value is not
+// in the array.
+//
+// Parameters:
+//  $arg0 = array to search
+//  $arg1 = value to find
+//
+Find24:
+	invoke	(Search24)
+	
+	pload24	(arrval, result2)
+	
+	beq		(arrval, arg1, find24_end)
+	
+	setvar	(result, -1)
+	setvar	(result2, 0)
+	
+	find24_end:
+		return
+
+//
+// Sorted array unique 24-bit insertion.
+//
+// Inserts the 24-bit value $arg1 into the sorted array at $arg0 if it
+// is not already there, and returns the address at which it was inserted.
+// The array remains sorted after the insertion.
+//
+// Parameters:
+//  $arg0 = array
+//  $arg1 = 24-bit value to insert
+//
+// Return value:
+//  $result = address of inserted item
+//
+InsertUnique24:
+
+	invoke	(Search24)
+	
+	pload16	(length, array)
+	
+	//"@Insert pos: " printd(result,0) next
+	//"@Length: " printd(length,0) next
+	
+	copyvar	(index, result)
+	
+	// $result = address of target index
+	shl		(result)
+	shl		(result)
+	add		(result, result, array)
+	addi	(result, result, 2)
+	
+	// If the index is outside the array, just append the value
+	bgte	(index, length, uinsert24_insert)
+	
+	// Check if the cell already contains the value we're inserting
+	pload24	(arrval, result)
+	beq		(arrval, value, uinsert24_end)
+	
+	// Heeeere's trouble. We need to shift the whole damn array up.
+	
+	copyvar	(pos, length)
+	shl		(pos)
+	shl		(pos)
+	add		(pos, pos, array)
+	addi	(pos, pos, 2)
+	// arr[i] = arr[i-1] as long as i > result
+	uinsert24_shift_up:
+		pload32	(arrval, pos)
+		addi	(pos, pos, 4)
+		pstore32(arrval, pos)
+		addi	(pos, pos, -8)
+		bgte	(pos, result, uinsert24_shift_up)
+		
+	// Insert the item at the result address
+	uinsert24_insert:		
+		pload16		(length, array)
+		incr		(length)
+		pstore16	(length, array)
+		pstore32	(value, result)
+	
+	// Item is already present, return
+	uinsert24_end:
+	
+	return
+
+
+
+//
+// Remove function.
+//
+// Parameters:
+//  $arg0 = array to remove from
+//  $arg1 = index of item to remove
+Remove:
+	pload16	(length, array)
+	copyvar	(index, arg1)
+	
+	beq		(length, zero, remove_end)
+	bgte	(index, length, remove_end)
+	
+	copyvar	(pos, index)
+	shl		(pos)
+	shl		(pos)
+	add		(pos, pos, array)
+	addi	(pos, pos, 2)
+	
+	addi	(pos2, pos, 4)
+	
+	// arr[i] = arr[i+1] as long as i < length
+	remove_shift_down:
+		pload32	(arrval, pos2)
+		pstore32(arrval, pos)
+		
+		addi	(pos,pos,4)
+		addi	(pos2,pos2,4)
+
+		incr	(index)
+		blt		(index, length, remove_shift_down)
+		
+	decr	(length)
+	pstore16(length,array)
+	
+	remove_end:
+	return
+
+

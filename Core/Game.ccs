@@ -1,0 +1,1669 @@
+//
+// EB-Zork
+//
+// Common functionality
+//
+// RESERVED REGISTERS: 190 - 199, 240 - 255
+//
+
+import "Includes.ccs"
+
+import Script
+import Entity
+
+
+//
+// Memory Map
+//
+// PERSISTENT
+//  $31:6000-$31:6400		Item location data
+//  $31:6400-03				Current location
+//
+// NON-PERSISTENT
+//  $31:6B00				"this"
+//  $31:6B04				verbose
+//  $31:6B08
+
+
+define player_loc	= 0x316400
+
+
+//
+// Public interface registers
+//
+define This				= 240
+define Target			= 241
+define ItemUsed			= 242
+define ThisLocation		= 243
+define TargetLocation	= 244
+define ItemUsedLocation	= 245
+define Player			= 246
+define Visited			= 247
+define Examining		= 248
+define PlayerLocation	= 249
+
+//
+// Windows
+//
+define MainWindow		= 8
+define ActionWindow		= 45
+define ObjectWindow		= 9
+define ItemMenuWindow	= 3
+define ItemMenuSmall	= 11
+
+Window.SetSize( MainWindow,		1,  1,  30, 20 )
+Window.SetSize( ActionWindow,	1,  21, 30,  6 )
+Window.SetSize( ObjectWindow,	10, 1,  21, 20 )
+Window.SetSize( ItemMenuWindow,	3,  1,  8,  12 )
+Window.SetSize( ItemMenuSmall,	3,  1,  8,  6  )
+
+//
+// Reserved registers
+//
+define tvar0	= 190
+define tvar1	= 191
+define tvar2	= 192
+define tvar3	= 193
+define tvar4	= 194
+define tvar5	= 195
+define tvar6	= 196
+define tvar7	= 197
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Initialization
+//
+//
+
+command Initialize()
+{
+	setvar(Player, Player.Self)
+	
+	Window.Open(45)
+	Window.Open(8)
+		
+	music(4)
+}
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Public Interface
+//
+// These are the functions that are primarily intended to be called
+// by the game script. They include "this"-context methods for con-
+// venient use within event handler functions, as well as general
+// methods to modify the state of the game.
+//
+//
+
+
+//
+// "This" macros
+//
+// These are intended to be used in entity slot functions, and all
+// perform some sensible operation on the current entity being used.
+//
+// These are all inline macros for convenience and speed.
+//
+
+//
+// Macros for manipulating context objects
+//
+// The context registers are:
+//
+//	This			The entity whose method is being called.
+//	Target			The selected target entity, if any.
+//	ItemUsed		The item being used or dropped in a particular action
+//
+//  ThisLocation
+//	TargetLocation
+//	ItemUsedLocation
+//
+// Now, how do we correctly set the location registers?
+//
+// Firstly, I think we need to augment the menu system so that we
+// can store two values per option: one for the object, and one
+// for its location.
+//
+
+
+//
+// Prints the name of the object
+//
+command PrintThis()
+{
+	copyvar	(arg0, This)
+	invoke	(PrintName)
+}
+
+
+//
+// Prints the name of an object with an indefinite article.
+//
+command PrintThisIndefinite()
+{
+	copyvar	(arg0, This)
+	invoke	(PrintNameIndefinite)
+}
+
+//
+// Prints the name of the current action target
+//
+command PrintTarget()
+{
+	copyvar	(arg0, Target)
+	invoke	(PrintName)
+}
+
+command PrintItemUsed()
+{
+	copyvar	(arg0, ItemUsed)
+	invoke	(PrintName)
+}
+
+
+
+//
+// Prints the location of the current object
+//
+command PrintThisLoc()
+{
+	copyvar	(arg0, ThisLocation)
+	invoke	(PrintName)
+}
+
+//
+// Prints the location of the current target
+//
+command PrintTargetLoc()
+{
+	copyvar	(arg0, TargetLocation)
+	invoke	(PrintName)
+}
+
+//
+// Prints the location of the item being used
+//
+command PrintItemLoc()
+{
+	copyvar	(arg0, ItemUsedLocation)
+	invoke	(PrintName)
+}
+
+
+//
+// OpenThis
+// "Opens" the object, displaying a list of items it contains.
+//
+command OpenThis()
+{
+	copyvar	(arg0, This)
+	invoke	(OpenObject)
+}
+
+
+//
+// TakeThis
+// Removes the object from the environs and puts it in the player's
+// inventory.
+//
+command TakeThis()
+{
+	RemoveThis()
+	Item.SetLocationV( This, Player )
+}
+
+
+//
+// Removes this item
+//
+command RemoveThis()
+{
+	copyvar	(arg0, ThisLocation)
+	copyvar	(arg1, This)
+	invoke	(Item.RemoveFrom)
+}
+
+//
+// Removes the targeted item
+//
+command RemoveTarget()
+{
+	copyvar	(arg0, TargetLocation)
+	copyvar	(arg1, Target)
+	invoke	(Item.RemoveFrom)
+}
+
+//
+// Removes the item that was used
+//
+command RemoveItemUsed()
+{
+	copyvar	(arg0, ItemUsedLocation)
+	copyvar	(arg1, ItemUsed)
+	invoke	(Item.RemoveFrom)
+}
+
+
+//
+// SelectTarget
+//
+// Value of command is the selected item, so it can be used like this:
+//    if SelectTarget() { PrintTarget() ... etc. }
+//
+command SelectTarget()
+{
+	push(This)	// Selecting a target does not change "This"
+	
+	ShowObjectMenuC("Use on what?")
+	
+	copyvar	(Target, result)
+	copyvar	(TargetLocation, result2)
+	
+	Window.Switch(MainWindow)
+	
+	pull(This)
+	
+	// Make sure the MainWindow's result register contains
+	// the selected item as well.
+	setresult(result)
+}
+
+
+//
+// Drops an item on the floor and displays the message
+// "You put the <item> <on the <this>>, but it falls off and lands <on the floor>.
+//
+command DropOnFloor( r_item )
+{
+	newline
+	
+	// Remove from player inventory
+	setvar	(arg0, Player.Self)
+	copyvar	(arg1, tvar0)
+	invoke	(Item.RemoveFrom)
+	
+	"@You put the "
+	copyvar	(arg0, r_item)
+	invoke	(PrintName)
+	
+	// " on the <item>, but it falls off..."
+	copyvar	(arg0, This)
+	invoke	(PrintPlacement)
+	
+	",|| but it falls off and lands"
+	load32	(arg0, player_loc)
+	invoke	(PrintPlacement)
+	"."
+	
+	// Put the item on the floor
+	load32	(arg0, player_loc)
+	copyvar	(arg1, r_item)
+	invoke	(Item.SetLocation)
+}
+
+// Same as above, without message
+command DropOnFloorSilently( r_item )
+{
+	// Remove from player inventory
+	setvar	(arg0, Player.Self)
+	copyvar	(arg1, tvar0)
+	invoke	(Item.RemoveFrom)
+	
+	// Put the item on the floor
+	load32	(arg0, player_loc)
+	copyvar	(arg1, r_item)
+	invoke	(Item.SetLocation)
+}
+
+//
+// Puts an item inside "this" entity, displaying a message to that effect.
+//
+command DropInThis( r_item )
+{
+	newline
+	
+	// Remove from player inventory
+	setvar	(arg0, Player.Self)
+	copyvar	(arg1, tvar0)
+	invoke	(Item.RemoveFrom)
+	
+	copyvar	(arg0, This)
+	copyvar	(arg1, r_item)
+	invoke	(Item.SetLocation)
+	
+	"@You put the "
+	copyvar	(arg0, r_item)
+	invoke	(PrintName)
+	
+	
+	// "in the <container>"
+	copyvar	(arg0, This)
+	invoke	(PrintPlacement)
+	"."
+}
+
+
+
+//
+// Puts "true" in the result register if the current
+// area has never been visited before now.
+//
+command FirstVisit
+{
+	not setresult(Visited)
+}
+
+//
+// Puts "true" in the result register if a verbose description
+// should be provided for the current object.
+//
+command Verbose
+{
+	setresult(Examining)
+}
+
+
+//
+// General-purpose utility functions
+//
+// These functions don't modify the game state, but are useful for
+// numerous purposes.
+//
+
+
+//
+// Function: PrintName
+//
+//  $arg0 = entity whose name will be printed
+//
+PrintName:
+{
+	setvar	(arg1, NAME)
+	invoke	(GetEntityData)
+	if ne(result,zero)
+		pcall(result)
+	else
+		"<null>"
+	return
+}
+
+
+//
+// Function: PrintNameIndefinite
+//
+//  $arg0 = entity whose name will be printed
+//
+PrintNameIndefinite:
+{
+	setvar	(arg1, NAME)
+	invoke	(GetEntityData)
+	
+	if equal(result,zero) {
+		"<null>"
+	}
+	else {	
+		pload8	(tvar0, result)
+		"a"
+		beqi	(tvar0, "a", vowel)
+		beqi	(tvar0, "e", vowel)
+		beqi	(tvar0, "i", vowel)
+		beqi	(tvar0, "o", vowel)
+		beqi	(tvar0, "u", vowel)
+		j		(nonvowel)
+
+		vowel:
+			"n"
+		nonvowel:
+			" "
+		pcall(result)
+	}
+	return
+}
+
+//
+// Function: PrintPlacement
+//
+// Prints an entity's "placement string", e.g., "on the floor"
+// or "in the box."
+//
+//  $arg0 = entity to print placement for
+//
+PrintPlacement:
+{
+	// now print the placement tag for the object
+	push	(arg0)
+	setvar	(arg1, PLACEMENT)
+	invoke	(GetEntityData)
+	pull	(arg0)
+	
+	copyvar	(This, arg0)
+	
+	// if the placement data is null, just use "on the <object>"
+	if equali(result, 0) {
+		" on the "
+		invoke	(PrintName)
+	}
+	else
+		pcall	(result)
+		
+	return
+}
+
+//
+// Function: IsContainer
+//
+// Returns 1 if the specified entity can contain items
+//
+IsContainer:
+{
+	setvar	(arg1, OPENABLE)
+	invoke	(GetEntityData)
+	setresult(result)
+	return
+}
+
+
+//
+// Function: HasVisted
+//
+// Returns 1 if the specified location has been visited.
+//
+// $arg0 = location to check
+//
+HasVisited:
+{
+	setvar	(arg1, FLAG)
+	invoke	(GetEntityData)
+	loadflag(result,result)
+	return
+}
+
+command HasVisitedC(loc)
+{
+	setvar	(arg0,loc)
+	invoke	(HasVisited)
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// 
+//
+//
+
+
+
+command Visit( loc ) {
+	setvar	(arg0, loc)
+	invoke	(visit)
+}
+
+
+//
+// Function: visit
+// Takes the player to a specified location.
+//
+// Parameters:
+//  $arg0 - address of location to visit
+//
+visit:
+	// Ensure that we're targeting the main window
+	Window.Open(MainWindow)
+	
+	store32	(arg0, player_loc)
+	copyvar	(PlayerLocation, arg0)
+	
+	//
+	// Check the initialization flag and initialize if needed.
+	//
+	setvar	(arg1, FLAG)
+	invoke	(GetEntityData)
+	loadflag(var1,result)	
+	setflag	(result)
+	
+	if equal(var1, zero) {
+		setvar	(Visited, 0)
+		setvar	(arg1, INIT)
+		invoke	(CallEntitySlot)
+	} else {
+		setvar	(Visited, 1)
+	}
+	
+	
+	//
+	// Next, describe the area to the player
+	//
+	load32	(arg0, player_loc)	
+	setvar	(arg1, LOOK)
+	invoke	(CallEntitySlot)
+	
+	setvar	(Visited, 1)
+	
+	//
+	// Describe the items that are on the floor
+	//
+	load32	(arg0, player_loc)
+	invoke	(DescribeItemsOnObject)
+
+	
+	//
+	// Then describe items on each "always-open" sub-object
+	//
+	load32	(arg0, player_loc)
+	setvar	(arg1, DescribeItemsOnObjectIfOpen)
+	invoke	(ForEachObjectIn)
+
+	return
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function EnumerateItemsOnObjectIfOpen
+//
+// Lists the items on an object in a menu, as long as the object
+// is "always open."
+//
+// Parameters:
+//  $arg0 = object
+//
+EnumerateItemsOnObjectIfOpen:
+{
+	setvar	(arg1, ALWAYSOPEN)
+	invoke	(GetEntityData)
+	
+	if istrue(result) {
+		invoke	(EnumerateItemsOnObject)
+	}
+	
+	return
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: EnumerateItemsOnObject
+//
+// Lists the items on an object in a currently-open menu.
+//
+// Parameters
+//	$arg0 = object
+//
+EnumerateItemsOnObject:
+{
+	copyvar(tvar5, arg0)
+	
+	setvar(arg1, AddItem)
+	invoke(Item.ForEachIn)
+	
+	return
+	
+	//
+	// Internal helper
+	//
+	AddItem:
+	{
+		//asmcall(progressbar)
+		
+		Menu.ValueFromRegister( arg0 )
+		Menu.SecondaryFromRegister( tvar5 )
+		
+		setvar	(arg1, NAME)
+		invoke	(GetEntityData)
+		Menu.Register( result )
+		
+		return
+	}
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: EnumerateSubObjects
+//
+// Lists the sub-objects of an object in a menu.
+//
+// Parameters:
+//	$arg0 = entity whose sub-objects will be listed
+//
+EnumerateSubObjects:
+{
+	copyvar(tvar5, arg0)
+	
+	setvar(arg1, AddItem)
+	invoke(ForEachObjectIn)
+	
+	return
+	
+	//
+	// Internal helper
+	//
+	AddItem:
+	{
+		Menu.ValueFromRegister( arg0 )		// Object
+		Menu.SecondaryFromRegister( tvar5 )	// Its location
+		setvar	(arg1, NAME)
+		invoke	(GetEntityData)
+		Menu.Register( result )
+		return
+	}
+}
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: DescribeItemsOnObjectIfOpen
+//
+// 
+//
+DescribeItemsOnObjectIfOpen:
+{
+	setvar	(arg1, ALWAYSOPEN)
+	invoke	(GetEntityData)
+	
+	if istrue(result) {
+		invoke	(DescribeItemsOnObject)
+	}
+	
+	return
+}
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: DescribeItemsOnObject
+//
+// Prints a string describing the items on (or in) an object.
+// E.g., "There is a wallet and a sandwich on the desk."
+//
+// Parameters
+//	$arg0 = object
+//
+DescribeItemsOnObject:
+{
+	addi	(sp,sp,-4)
+	pstore32(arg0,sp)
+	
+	setvar	(arg1, print)
+	invoke	(Item.ForEachIn)
+	
+	beq		(result,zero,exit)
+	
+	// now print the placement tag for the object
+	pload32	(arg0,sp)
+	invoke	(PrintPlacement)	
+	"."
+	
+	exit:
+		addi	(sp,sp,4)
+		return
+	
+	
+	// $arg0 = item
+	// $arg1 = is_first
+	// $arg2 = is_last
+	print:
+	{
+		if istrue(arg1) {
+			next "@There is "
+		}
+		else if istrue(arg2) {
+			" and "
+		}
+		else {
+			", "
+		}
+		
+		setvar		(arg1, GLANCE)
+		invoke		(CallEntitySlot)
+		
+		// Print name preceded by indefinite article
+		//invoke	(PrintNameIndefinite)
+		
+		return
+	}
+}
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: ForEachObjectIn
+//
+// Calls a function on each sub-object in a location.
+//
+// Parameters:
+//  $arg0 = location
+//  $arg1 = function to call
+//
+ForEachObjectIn:
+{
+	// tvar0 = address of function to call
+	copyvar	(tvar4, arg1)
+	
+	//
+	// The actual callback part is handled by the object's
+	// LISTOBJECTS handler, which should use the Object()
+	// macro (defined below) for each sub-object.
+	//
+	setvar	(arg1, LISTOBJECTS)
+	invoke	(CallEntitySlot)
+
+	return
+}
+
+//
+// Called by clients
+//
+command Object( ent )
+{
+	setvar	(arg0, ent)
+	pinvoke	(tvar4)
+}
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// MACRO: ProcessInput
+//
+// The main hook for the zork game library.
+// Call this to process a player action.
+//
+command ProcessInput()
+{
+
+	invoke	(DoVerbMenu)
+
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: DoVerbMenu
+//
+// Displays the action selection menu and processes any selection.
+//
+//
+DoVerbMenu:
+{
+	Window.OpenTitle(ActionWindow, "Actions")
+	
+	Menu.BeginC()
+	
+		Menu.OptionFromString("Move", ProcessMoveAction)
+		Menu.OptionFromString("Look", ProcessLookAction)
+		Menu.OptionFromString("Use", ProcessUseAction)
+				
+		Menu.OptionFromString("Take", ProcessTakeAction)
+		Menu.OptionFromString("Open", ProcessOpenAction)
+		
+		Menu.OptionFromString("Wait", ProcessWaitAction)
+		
+		Menu.OptionFromString("Goods", ProcessGoodsAction)
+		Menu.OptionFromString("Drop", ProcessDropAction)
+		
+		//Menu.OptionFromString("Debug", DoDebug)
+		
+	Menu.DisplayVerticalC(5)
+
+	// If no selection, just display menu again
+	if equal(result,zero) {		
+		goto( DoVerbMenu )
+	}
+	
+	
+	// TODO: TIME PASSES HERE
+	// Call the current location's TICK handler
+	
+
+	
+	// Call selected function
+	pinvoke	(result)
+
+	return
+}
+
+
+
+	
+command highlight(str)
+{
+	text_color(4)
+	fastline
+	str
+	text_color(0)
+}
+
+//
+// Processes a "Wait" action
+//
+ProcessWaitAction:
+{
+	highlight("Wait")
+	
+	Window.Switch(MainWindow)
+	newline
+	
+	pause(0)
+	
+	"@You wait for a few moments."
+	
+	return
+}
+
+
+//
+// Processes a "Move" action
+//
+ProcessMoveAction:
+{
+	highlight("Move")
+	
+	// List the exits from the current location
+	invoke	(ShowExitMenu)
+	
+	// If there was a selection, visit it
+	if not equal(result,zero)
+	{
+		copyvar	(arg0, result)
+		invoke	(visit)
+	}
+	
+	return
+}
+
+
+//
+// Displays a menu of possible exits.
+//
+ShowExitMenu:
+{
+	// Call current location's ListExits function,
+	// which will load a series of exit options.
+
+	Window.OpenTitle(ActionWindow, "Move which way?")
+	
+	Menu.BeginC()
+	
+	load32	(arg0, player_loc)
+	setvar	(arg1, LISTEXITS)
+	invoke	(CallEntitySlot)
+
+	//
+	// Display menu
+	//
+	Menu.DisplayVerticalC(2)
+	
+	Window.Clear()
+
+	return
+}
+
+command Exit( dirname, destination )
+{
+	
+	Menu.BeginOption()
+		Menu.AppendString(dirname)
+		
+		// Now, we append the name of the destination location
+		// (but only if the location has been "seen" before)
+		Menu.AppendString(": ")
+		
+		setvar	(arg0, destination)
+		invoke	(HasVisited)
+		
+		if not equal(result,zero)
+		{
+			setvar	(arg0, destination)
+			setvar	(arg1, NAME)
+			invoke	(GetEntityData)
+			Menu.AppendRegister(result)
+		}
+		else
+		{
+			Menu.AppendString("???")
+		}
+		
+	
+	Menu.EndOption(destination)
+}
+
+
+
+//
+// Processes a "Look" action
+//
+ProcessLookAction:
+{
+	highlight("Look")
+
+	// List the objects in the environment	
+	ShowObjectMenuC("Look at what?")
+	
+	copyvar	(This, result)
+	copyvar	(ThisLocation, result2)
+
+	// If an item was selected, look at it
+	if not equal(result, zero) {
+		Window.Switch(MainWindow)
+		Window.Clear()
+
+		setvar	(Examining, 1)
+		copyvar	(arg0, This)
+		setvar	(arg1, LOOK)
+		invoke	(CallEntitySlot)
+		setvar	(Examining, 0)
+	}
+
+	// Slight hack: if we're looking at the current location,
+	// also describe items in the scene.
+	//
+	// TODO: instead we should check to see if the object is "always-open"
+	//
+	if equal(This, PlayerLocation)
+	{
+		load32	(arg0, player_loc)
+		invoke	(DescribeItemsOnObject)
+		
+		load32	(arg0, player_loc)
+		setvar	(arg1, DescribeItemsOnObject)
+		invoke	(ForEachObjectIn)
+	}
+	
+	setvar	(This,0)
+	setvar	(ThisLocation,0)
+	
+	return
+}
+
+
+
+//
+// Processes a "Take" action
+//
+ProcessTakeAction:
+{
+	highlight("Take")
+	
+	// List the objects in the environment
+	ShowObjectMenuC("Take what?")
+	
+	copyvar	(This, result)
+	copyvar	(ThisLocation, result2)
+	
+	if not equal(result, zero) {
+		Window.Switch(MainWindow)
+		
+		copyvar	(arg0, result)
+		setvar	(arg1, TAKE)
+		invoke	(CallEntitySlot)
+	}
+	
+	return
+}
+
+
+
+//
+// Processes a "Use" action
+//
+ProcessUseAction:
+{
+	highlight("Use")
+	
+	// List the player's inventory
+	ShowObjectMenuC("Use what?")
+	
+	copyvar	(This, result)
+	copyvar	(ThisLocation, result2)
+	
+	if equal(result, zero) {
+		return
+	}
+	
+	copyvar	(ItemUsed, This)
+	copyvar	(ItemUsedLocation, ThisLocation)
+	
+	copyvar	(arg0, result)
+	invoke	(Use)
+	
+	return
+}
+
+
+
+
+//
+// Processes the "Goods" menu
+//
+ProcessGoodsAction:
+{
+	highlight("Goods")
+	
+	// List the player's inventory
+	ShowInventoryC("Inventory")
+	
+	if equal(result,zero) {
+		//Window.switch(ActionWindow)
+		return
+	}
+	
+	copyvar	(tvar0, result)		// tvar0 = selected item
+	
+	
+	Window.Switch(ObjectWindow)
+	
+	// Highlight the selected item
+	text_color(4)
+	copyvar	(arg0, result)
+	setvar	(arg1, NAME)
+	invoke	(GetEntityData)
+	
+	// Slight hack: always capitalize the item name
+	pload8	(var0, result)
+	if gti(var0,0x90) and lti(var0,0xab) {
+		addi	(var0,var0,-0x20)
+		setarg	(var0)
+		fastline "[1c 03 00]"
+		addi	(result,result,1)
+		fastline pcall(result)
+	}
+	else {
+		fastline pcall	(result)
+	}	
+	text_color(0)
+	
+	// This prevents the menu from "slowing down" the
+	// presentation of the highlighted text above
+	pause(0)
+	
+	// Display the item action menu
+	Window.OpenTitle(ItemMenuWindow, "Item")
+	Menu.BeginC()
+		Menu.OptionFromString("Use", 1)
+		Menu.OptionFromString("Examine", 2)
+		Menu.OptionFromString("Open", 3)
+		Menu.OptionFromString("Put", 4)
+		Menu.OptionFromString("Drop", 5)
+	Menu.DisplayVerticalC(1)
+	
+	
+	// Whichever action we dispatch on the selected item,
+	// We start with this = item, thisloc = inventory
+	copyvar	(This, tvar0)
+	setvar	(ThisLocation, Player.Self)
+	
+	
+	//
+	// Process USE action
+	//
+	if eqi(result, 1) {
+		Window.Close(ItemMenuWindow)
+		Window.Close(ObjectWindow)
+		Window.Switch(MainWindow)
+		
+		// This and ItemUsed are the same for the first stage of item use
+		copyvar	(ItemUsed, This)
+		copyvar	(ItemUsedLocation, ThisLocation)
+		
+		copyvar	(arg0, This)
+		invoke	(Use)
+	}
+	//
+	// Process EXAMINE action
+	//
+	else if eqi(result, 2) {
+		Window.Close(ItemMenuWindow)
+		Window.Close(ObjectWindow)
+		Window.Switch(MainWindow)
+		Window.Clear()
+		
+		copyvar	(arg0, tvar0)
+		setvar	(arg1, LOOK)
+		invoke	(CallEntitySlot)
+	}
+	//
+	// Process OPEN action
+	//
+	else if eqi(result, 3) {
+		Window.Close(ItemMenuWindow)
+		Window.Close(ObjectWindow)
+		Window.Switch(MainWindow)
+		
+		copyvar	(arg0, This)
+		setvar	(arg1, OPEN)
+		invoke	(CallEntitySlot)		
+	}
+	//
+	// Process PUT action
+	//
+	else if eqi(result, 4) {
+		highlight("Put")
+		
+		copyvar	(ItemUsed, This)
+		copyvar	(ItemUsedLocation, ThisLocation)
+		
+		ShowInventoryC("In what?")
+		
+		// Information about the target comes from the menu
+		copyvar	(Target, result)
+		copyvar	(TargetLocation, result2)
+		
+		//
+		// When we PUT an item in another item,
+		// we first call DROP on the item, specifying the target.
+		//
+		// At this point:
+		//	This		= item selected, Loc = inventory
+		//	ItemUsed	= item selected, Loc = inventory
+		//	Target		= destination
+		//	TargetLoc	= secondary result of above menu
+		//
+		// Drop, however, then calls the DROPIN handler of the
+		// target, at which point This becomes equal to Target,
+		// while ItemUsed is unchanged.
+		//
+		//
+		
+		Window.Close(ItemMenuWindow)
+		Window.Close(ObjectWindow)
+		Window.Switch(MainWindow)
+		
+		if ne(result,zero) {
+			copyvar	(arg0, tvar0)
+			copyvar	(arg1, result)
+			invoke	(Drop)
+		}
+		
+	}
+	//
+	// Process DROP action
+	//
+	else if eqi(result, 5) {
+		highlight("Drop")
+		
+		copyvar	(ItemUsed, This)
+		copyvar	(ItemUsedLocation, ThisLocation)
+		
+		ShowObjectMenuC("Where?")
+		
+		copyvar	(Target, result)
+		copyvar	(TargetLocation, result2)
+		
+		Window.Close(ItemMenuWindow)
+		Window.Close(ObjectWindow)
+		Window.Switch(MainWindow)
+		
+		if ne(result,zero) {
+			copyvar	(arg0, tvar0)
+			copyvar	(arg1, result)
+			invoke	(Drop)
+		}
+	}
+
+	Window.Close(ItemMenuWindow)
+	
+	Window.Close(ObjectWindow)
+	
+	Window.Switch(ActionWindow)
+	Window.Clear()
+	
+	return
+}
+
+
+
+//
+// Processes a "Drop" action
+//
+ProcessDropAction:
+{
+	highlight("Drop")
+	
+	ShowInventoryC("Drop what?")
+	
+	//"@menu result = " printh(result,0) next
+	if equal(result,zero) {
+		return
+	}
+	
+	copyvar	(tvar0, result)
+	
+	ShowObjectMenuC("Drop it where?")
+	if equal(result,zero)
+		return
+	
+	copyvar	(arg0, tvar0)
+	copyvar	(arg1, result)
+	
+	invoke	(Drop)
+	
+	return
+}
+
+
+
+//
+// Processes an "Open" action
+//
+ProcessOpenAction:
+{
+	highlight("Open")
+	
+	// Opening things is fairly simple:
+	// If the opening is successful, we display a submenu
+	// listing whatever items are inside the object. Items
+	// inside can then be taken or examined.
+	
+	ShowObjectMenuC("Open what?")
+	
+	if equal(result, zero) {
+		return
+	}
+	
+	
+	Window.Switch(MainWindow)
+	// TODO: do we clear the window here or not?
+	// Sometimes we don't want to...
+	
+	copyvar	(arg0, result)
+	setvar	(arg1, OPEN)
+	invoke	(CallEntitySlot)
+	
+	return
+}
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: Use
+//
+// Uses the specified object, performing any action that the object
+// is coded to perform.
+//
+// $arg0 = item to be used
+//
+Use:
+{
+	Window.Switch(MainWindow)
+	
+	copyvar	(ItemUsed, arg0)
+	setvar	(Target, 0)
+	
+	setvar	(arg1, USE)
+	invoke	(CallEntitySlot)
+	
+	// If a target was specified, notify it
+	if ne(Target, zero) {
+		copyvar	(arg0, Target)
+		setvar	(arg1, TARGET)
+		invoke	(CallEntitySlot)
+	}
+	
+	setvar	(ItemUsed, 0)
+	setvar	(Target, 0)
+	
+	return
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: Take
+//
+// Takes the specified object from the current environment
+// and places it in the player's inventory.
+//
+// $arg0 = item to grab
+//
+Take:
+{
+	push(svar0)
+	copyvar	(svar0, arg0)
+	
+	// Remove from scene
+	copyvar	(arg1, svar0)
+	load32	(arg0, player_loc)
+	invoke	(Item.RemoveFrom)
+	
+	// Also remove from subobjects, since it might have been
+	// on one of those instead of the floor.
+	load32	(arg0, player_loc)
+	setvar	(arg1, RemoveFrom)
+	invoke	(ForEachObjectIn)
+	
+	// Place it in the player's inventory
+	copyvar	(arg1, svar0)
+	setvar	(arg0, Player.Self)
+	invoke	(Item.SetLocation)
+	
+	pull(svar0)
+	return
+	
+	
+	// Internal helper
+	RemoveFrom:
+	{
+		// arg0 = location
+		copyvar	(arg1, svar0)
+		invoke	(Item.RemoveFrom)
+		return
+	}
+}
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: RemoveFromScene
+//
+// Removes an item from the current scene, whether it's in the
+// player's inventory, on the floor, or on an object.
+//
+// $arg0 = item to remove
+//
+RemoveFromScene:
+{
+	copyvar	(tvar2, arg0)
+	
+	// Remove from environs
+	copyvar	(arg1, arg0)
+	load32	(arg0, player_loc)
+	invoke	(Item.RemoveFrom)
+	
+	
+	// Remove from inventory
+	copyvar	(arg1, tvar2)
+	setvar	(arg0, Player.Self)
+	invoke	(Item.RemoveFrom)
+	
+	// Remove from subobjects
+	load32	(arg0, player_loc)
+	setvar	(arg1, RemoveFromHelper)
+	invoke	(ForEachObjectIn)
+	
+	
+	return
+	
+	
+	RemoveFromHelper:
+	{
+		// arg0 = location
+		copyvar	(arg1, tvar2)
+		invoke	(Item.RemoveFrom)		
+		return
+	}
+}
+
+command RemoveFromSceneC(item)
+{
+	setvar	(arg0, item)
+	invoke	(RemoveFromScene)
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: Drop
+//
+// Drops the given item onto the given entity.
+//
+//  $arg0 = item
+//  $arg1 = entity to drop onto
+//
+Drop:
+{
+	if	equal(arg0, arg1) {
+		newline
+		"@You can't put something inside itself." next
+		"@Not even if you turn it inside out,| so don't bother trying."
+		return
+	}
+	
+	Window.Switch(MainWindow)
+	
+	copyvar	(ItemUsed, arg0)
+	copyvar	(This, arg1)
+	
+	copyvar	(arg0, arg1)
+	setvar	(arg1, DROPIN)
+	invoke	(CallEntitySlot)
+	
+	// If the entity dropped on didn't have a drop function,
+	// do the default "but it falls on the floor" thing.
+	if isfalse(result) {
+		DropOnFloor( ItemUsed )
+	}
+	
+	setvar	(ItemUsed, 0)
+	setvar	(This, 0)
+	
+	return
+}
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: OpenObject
+//
+// Displays a menu of items inside the given object, allowing
+// the player to examine or take them.
+//
+// NOTE: This function shouldn't be called directly to perform
+// the "open" action on an object. Instead, call the item's
+// "Open" slot, which will perform the correct action.
+//
+// E.g.,:
+//  An unlocked box's Open method should just call OpenThis.
+//  A lockable box's Open method should call OpenThis depending
+//   on whether the box is currently locked or not.
+//  A non-openable item should indicate such.
+//  A window's Open method should either let in some fresh air,
+//   or inform the player that the window is barred shut. :)
+//
+// Default behavior for an item is to simply say
+//  "you cannot open the <item>"
+//
+// Parameters:
+//  $arg0 = item to open
+//
+OpenObject:
+{
+	copyvar	(tvar0, arg0)		// tvar0 = item opened
+	
+	Window.Open(ObjectWindow)
+	
+	setvar	(arg1, NAME)
+	invoke	(GetEntityData)
+	settitle_reg(ObjectWindow, result)
+	
+	// set title here
+	Menu.BeginC()
+		invoke	(EnumerateItemsOnObject)
+	Menu.DisplayVerticalC(2)
+	
+	copyvar	(This, result)
+	copyvar	(ThisLocation, result2)
+
+	if equal(This,zero) {
+		Window.Close(ObjectWindow)
+		return
+	}
+	
+	copyvar	(tvar1, result)		// tvar1 = item selected
+	
+	Window.OpenTitle(ItemMenuSmall, "Item")
+	
+	Menu.BeginC()
+		Menu.OptionFromString("Take", 1)
+		Menu.OptionFromString("Examine", 2)
+	Menu.DisplayVerticalC(1)
+	
+	Window.Close(ItemMenuSmall)
+	Window.Close(ObjectWindow)
+	
+	Window.Switch(MainWindow)
+	
+	//
+	// "Take"
+	//
+	if eqi(result, 1) {
+		copyvar	(arg0, This)
+		
+		setvar	(arg1, TAKE)
+		invoke	(CallEntitySlot)
+		
+		if isfalse(result) {
+			newline "@You take the "
+			invoke	(PrintName)
+			" from the "
+			copyvar	(arg0, tvar0)
+			invoke	(PrintName)
+			"."
+
+			// Remove from original location
+			Item.RemoveFromV( This, ThisLocation )
+
+			// Put in inventory
+			Item.SetLocationV( This, Player )
+		}
+	}
+	//
+	// "Examine"
+	//
+	else if eqi(result, 2) {
+		Window.Clear()
+		copyvar	(arg0, tvar1)
+		setvar	(arg1, LOOK)
+		invoke	(CallEntitySlot)
+	}
+	
+	//Window.Close(ObjectWindow)
+	return
+	
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// Function: ShowInventory
+//
+// Displays a list of all items currently held by the player.
+//
+//
+command ShowInventoryC(title)
+{
+	//"[18 04]"
+	"[19 04]"
+	
+	Window.Switch(MainWindow)
+	//"[01]"
+	
+	
+	Window.OpenTitle(ObjectWindow, title)
+	Window.Switch(ObjectWindow)
+	
+	invoke	(ShowInventory)
+}
+
+ShowInventory:
+{
+	pause(1)
+	
+	Window.Clear()
+	
+	Menu.BeginC()	
+		setvar	(arg0, Player.Self)
+		invoke	(EnumerateItemsOnObject)
+	Menu.DisplayVerticalC(2)
+	
+	
+	if equal(result,zero) {
+		//Window.clear()
+		Window.CloseTop()
+		
+		// Always make sure we switch to SOME window after
+		// closing the current one; otherwise things explode.
+		Window.Switch(ActionWindow)
+		Window.Clear()
+		return
+	}
+		
+	return
+}
+
+
+
+/////////////////////////////////////////////////////////////////////
+//
+// ShowObjectMenu
+//
+// Displays a list of all objects and items in the current environs.
+// Includes the environs and the player.
+//
+//
+command ShowObjectMenuC(title)
+{
+	Window.OpenTitle(ObjectWindow, title)	
+
+	pause(0)
+	
+	invoke	(ShowObjectMenu)
+}
+
+ShowObjectMenu:
+{	
+	Menu.BeginC()
+
+		// The first object is always "Environs", which refers to the current location
+		//load32	(arg0, player_loc)
+		Menu.String("Environs")
+		Menu.ValueFromRegister(PlayerLocation)
+		Menu.SecondaryFromRegister(PlayerLocation)
+		
+		// Next is the player
+		//setvar	(arg0, Player.Self)
+		Menu.String("Self")
+		Menu.ValueFromRegister(Player)
+		Menu.SecondaryFromRegister(PlayerLocation)
+		
+		// Now add all the items in the room
+		//load32	(arg0, player_loc)
+		copyvar	(arg0, PlayerLocation)
+		invoke	(EnumerateItemsOnObject)
+		
+		// ...And all the items on sub-objects
+		copyvar	(arg0, PlayerLocation)
+		setvar	(arg1, EnumerateItemsOnObjectIfOpen)
+		invoke	(ForEachObjectIn)
+		
+		// And finally, all the sub-objects themselves
+		copyvar	(arg0, PlayerLocation)
+		invoke	(EnumerateSubObjects)		
+	
+	Menu.DisplayVerticalC(2)
+	Window.Clear()	
+	Window.CloseTop()
+	
+	return
+}
+

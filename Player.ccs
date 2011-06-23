@@ -1,0 +1,37 @@
+//
+// Player Entity
+//
+//
+
+import "Core/Game.ccs"
+import "Core/Entity.ccs"
+import "Core/Script.ccs"
+
+
+Self: Entity
+	Name(Self, "protagonist")
+	
+	OnLook(Self, {
+		"@You look yourself over. " prompt
+		"Frankly,| you've seen better days." next
+		"@Your clothes are wrinkled| and you feel sore in places you didn't even know you had." next
+		"@You could sure use a stiff drink right now."
+	})
+	
+	OnTake(Self, {
+		newline
+		"@You can't do that. " prompt
+		"You wouldn't even fit in your pocket."
+	})
+	
+	OnOpen(Self, {
+		Window.Clear()
+		"@You look around for something sharp enough for do-it-yourself surgery." next
+		"@Unfortunately you can't find anything suitable." next
+		"@You probably don't have anything valuable in you anyway."
+	})
+	
+	OnUse(Self, {
+		newline
+		"@This probably isn't the best time."
+	})

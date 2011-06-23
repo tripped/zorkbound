@@ -1,0 +1,831 @@
+/////////////////////////////////////////////////////////////////////
+//
+// Scenario descriptions.
+//
+// This file defines the locations in the game that the player
+// can visit and interact with.
+//
+
+import "Core/Game.ccs"
+import "Core/Entity.ccs"
+import "Core/Script.ccs"
+
+import Objects
+
+
+
+
+//
+// The central room, the nexus for the simple puzzles in this demo.
+//
+CentralRoom: Location
+{
+    Name(CentralRoom, "central room")
+    Flag(CentralRoom, count("flags", 100))
+    
+    ListExits(CentralRoom, {
+        Exit("North", Library)
+        Exit("South", Bedroom)
+        Exit("West", DrawingRoom)
+        Exit("East", Dungeon)
+    })
+    
+    
+    OnInitialize(CentralRoom, {
+        Item.SetLocationC(Pencil, Table)
+        Item.SetLocationC(AlphaStone, Table)
+    })
+    
+    OnLook(CentralRoom,
+    {
+        if( FirstVisit )
+        {
+            music(0x2D)
+            
+            "@|.|.|.|.|?" next
+            "@Tastes like|.|.|.| " next
+            "@Tastes like carpet,| actually." next
+            "@You open your eyes and pull your face away from the floor." next
+            "@You spit out a few carpet fibers and try to stand up." next
+            "@As you shakily get to your feet,| you try to remember what happened." next
+            "@Unfortunately,| you're drawing a complete blank." next
+            "@Must have been one hell of a party." next
+            "@Oh well,| might as well take your bearings." next
+            
+            Window.Clear()
+            
+            "@You look around." next
+            "@You are in a square,| windowless room." next
+            "@It's dark,| but you can see that the wallpaper is a dim burgundy." next
+            "@There are lavish drapes in the corners,| and the walls are occasionally"
+            " punctuated by pastoral-looking paintings." next
+            "@|.|.|.|You can't help but think it looks way more posh than any party you'd be invited to." next
+            
+            Window.Clear()
+            
+            "@You see a table in the center of the room." next
+            "@On the table there is a dark stone." next
+            music(4)
+            "@!!!" next
+            
+            Window.Clear()
+            
+            "@Suddenly,| a tiny bolt of recollection electrifies your mind." next
+            "@The stone!" next
+            "@Somehow it's important." next
+            "@Somehow,| it's the only way you're getting out of here alive." next
+            "@Well|,|| here goes nothing." next
+            
+            Window.Clear()
+            
+            "@You are in a dark room." next
+            "@In each of the four walls you can see a door." next
+            "@In the center of the room there is a table and a chair."
+        }
+        else if( Verbose )
+        {
+            "@You are in the central room." next
+            "@It's dark,| but you can see that the wallpaper is a dim burgundy." next
+            "@In each of the four walls you can see a door." next
+            "@There is a table and a chair in the center of the room."
+        }
+        else
+        {
+            "@You are in the central room."
+        }
+    })
+    
+    
+
+    //
+    // Central room furniture
+    //
+    ListObjects(CentralRoom, {
+        Object(Table)
+        Object(Chair)
+    })
+
+    Table: Furniture
+    {
+        Name(Table, "table")
+
+        OnLook(Table, {
+            "@This is a table of dark mahogany." next
+            "@It looks extremely expensive."
+        })
+
+        OnTake(Table, {
+            newline
+            "@On closer inspection,| the table is bolted to the floor for some reason." next
+            "@Anyway,| it wouldn't fit in your pocket." next
+            "@What were you thinking?"
+        })
+    }
+
+    Chair: Furniture
+    {
+        Name(Chair, "chair")
+
+        OnLook(Chair, {
+            "@This is a dark wooden chair with a leather cushion." next
+            "@It looks extremely expensive."
+        })
+
+        OnUse(Chair, {
+            newline
+            "@You sit down in the chair." next
+            "@It is quite comfortable,| if a little stiff."
+        })
+
+        OnTake(Chair, {
+            newline
+            "@You'd like to take the chair,| but it would be way too much trouble to carry around."
+        })
+    }
+}
+
+
+
+
+
+//
+// The northern room.
+//
+
+define shelf_investigated   = flag count("flags", 100)
+define shelf_opened         = flag count("flags", 100)
+define necronomicon_seen    = flag count("flags", 100)
+
+Library: Location
+{
+    Name(Library, "library")
+    Flag(Library, count("flags", 100))
+    
+    OnInitialize(Library, {
+        unset (shelf_opened)
+        unset (shelf_investigated)
+        
+        Item.SetLocationC( RedBook, SideTable )
+    })
+    
+    OnLook(Library, {
+        if( FirstVisit ) {
+            "@You find yourself in a somewhat larger room." next
+            "@It seems to be a library of some sort." next
+            "@The walls are lined with bookshelves which extend all the way to the dark ceiling." next
+            "@In the center of the richly carpeted floor there is a high-backed chair and an ornate side table."
+        }
+        else if( Verbose ) {
+            "@You are in the library." next
+            "@The walls are lined with bookshelves which extend all the way to the dark ceiling." next
+            "@In the center of the richly carpeted floor there is a high-backed chair and an ornate side table."
+        }
+        else {
+            "@You are in the library."
+        }
+    })
+    
+    ListExits(Library, {
+        Exit("South", CentralRoom)
+    })
+    
+    
+    // Library furniture
+    ListObjects(Library, {
+        Object(Chair)
+        Object(SideTable)
+        Object(Bookshelves)
+        
+        if shelf_investigated and not shelf_opened
+            Object(CleanCase)
+        if shelf_opened
+            Object(Alcove)
+    })
+
+    
+    Chair: Furniture
+    {
+        Name(Chair, "chair")
+        OnLook(Chair, {
+            "@This is a tall leather-upholstered armchair." next
+            "@The armrests are fronted with elaborately carved wood," prompt
+            " and the feet,| defying all reason,| appear to be gilded."
+        })
+        OnUse(Chair, {
+            newline
+            "@You sink down into the rich leather upholstery." next
+        })
+        OnTake(Chair, {
+            newline
+            "@You must be joking." next
+            "@This chair looks like it weighs four hundred pounds."
+        })
+    }
+    
+    SideTable: Furniture
+    {
+        Name(SideTable, "side table")
+        OnLook(SideTable, {
+            "@A slim wooden side table of Victorian design."
+        })
+        OnTake(SideTable, {
+            newline
+            "@Sure, you could probably pick it up,| but what would you do with it?" next
+            "@It would be a nuisance to carry around anyway."
+        })
+    }
+    
+    Bookshelves: Furniture
+    {
+        Name(Bookshelves, "bookshelves")
+        OnLook(Bookshelves, {
+            "@Every wall is covered with shelves,| filled with books of every possible description." next
+            "@Even the door you came in through has several shelves of books above it." next
+            "@The shelves themselves are made out of dark wood,| well-aged and lightly covered with dust." next
+            
+            if not shelf_opened {
+                "@You notice,| however,| that one case in particular seems to be completely free of dust."
+                set( shelf_investigated )
+            }
+            else {
+                "@One case of books is rotated back into the wall,| revealing a small alcove."
+            }
+        })
+        OnTake(Bookshelves, {
+            newline
+            "@The bookshelves are quite thoroughly attached to the walls." next
+            "@There's no way you're taking them with you."
+        })
+        OnUse(Bookshelves, {
+            Window.Clear()
+            "@You peruse the shelves." next
+            "@The books seem to be arranged by title." next
+            "@<Candide,>|| <Caravaggio,>|| <Catch-22,>||" newline
+            "[20]<Catholicism for Dummies>..." next
+            "@Whoever owns this place obviously has varied tastes."
+            
+        })
+    }
+    
+    //
+    // The mysterious dust-free shelf!
+    //
+    
+    CleanCase: Furniture
+    {
+        Name(CleanCase, "clean bookcase")
+        OnLook(CleanCase, {
+            "@On closer inspection,| this bookcase is downright suspicious." next
+            "@Not only is it dust-free,| the books on it appear to be fake!" next
+            "@You try to pull off an enticing copy of <Mars Needs Lumberjacks>,|"
+            " only to be frustrated in the attempt."
+        })
+        
+        OnUse(CleanCase, {
+            Window.Clear()
+            "@You poke around the bookcase until you happen to put your hands"
+            " on a phony copy of <Beau Geste.>" next
+            "@Suddenly,| the whole case rotates inward,| revealing an alcove in the wall behind it!" next
+            "@There is a suitcase in the alcove."
+            
+            set( shelf_opened )
+            
+            // initialize the suitcase
+            set( suitcase_locked )
+            Item.SetLocationC( Suitcase, Alcove )
+            Item.SetLocationC( OmegaStone, Suitcase )
+        })
+        
+        OnOpen(CleanCase, {
+            newline
+            "@Bookcases are already pretty <open>,| wouldn't you say?"
+        })
+    }
+    
+    // Yeah, I know, alcoves aren't really furniture as such.
+    Alcove: Furniture
+    {
+        Name(Alcove, "alcove")
+        Placement(Alcove, " in the alcove") // use "in" as opposed to "on"
+        OnLook(Alcove, {
+            "@This stone-lined alcove was hidden behind a trick bookcase." next
+            "@It is damp,| and it feels several degrees cooler than the rest of the room."
+        })
+        OnTake(Alcove, {
+            newline
+            "@An alcove is a recessed space,| as in a small room or opening." next
+            "@How could you take it without hauling off the rest of the room as well?"
+        })
+        OnOpen(Alcove, {
+            newline
+            "@An alcove is,| pretty much by definition,| already open." next
+            "@A closed alcove is usually called a closet."
+        })
+    }
+}
+
+
+
+//
+// The bedroom
+//
+
+define blinds_open = flag count("flags", 100)
+define mirror_broken = flag count("flags", 100)
+define canopy_burnt = flag count("flags", 100)
+
+Bedroom: Location
+{
+    Name(Bedroom, "bedroom")
+    Flag(Bedroom, count("flags", 100))
+    
+    ListExits(Bedroom, {
+        Exit("North", CentralRoom)
+    })
+    
+    OnInitialize(Bedroom, {
+        set( blinds_open )
+        unset( mirror_broken )
+        
+        Item.SetLocationC( Pistol, Dresser )
+    })
+    
+    OnLook(Bedroom, {
+        if( FirstVisit ) {
+            "@You are now in a small,| well-furnished room." next
+            "@It is clearly somebody's bedroom." next
+            "@A large canopied bed takes up most of the western wall." next
+            "@Across from the bed there is a dresser and a large mirror." next
+            "@There is a window on the southern wall." next
+        }
+        else if( Verbose ) {
+            "@You are in the bedroom." next
+            "@There is a large canopy bed on the west wall,| and a dresser on the east." next
+        }
+        else {
+            "@You are in the bedroom." next
+        }
+        
+        if blinds_open {
+            "@The window blinds are open;|||"
+            " you feel strangely uneasy."
+        }
+        else {
+            "@The window blinds are closed."
+        }
+    })
+    
+    
+    //
+    // Furniture!
+    //
+    ListObjects(Bedroom, {
+        Object(Bed)
+        Object(Dresser)
+        Object(Mirror)
+        Object(Window)
+    })
+    
+    Dresser: Furniture
+    {
+        Name(Dresser, "dresser")
+        
+        OnLook(Dresser, {
+            "@This is a large wooden dresser." next
+            "@The surface is slightly dusty."
+        })
+        
+        OnOpen(Dresser, {
+            newline
+            "@You open the drawers." next
+            "@...But they only contain boring clothes."
+        })
+    }
+    
+    Window: Furniture
+    {
+        Name(Window, "window")
+        Placement(Window, " on the window sill")
+        
+        OnLook(Window, {
+            if blinds_open {
+                "@Through the window you can see a lawn and a hedge." next
+                "@The image is dim;| it seems to be a misty evening." next
+                "@|.|.|.|Something about the scene does not seem quite right." next
+                "@You back away from the window slowly."
+            }
+            else {
+                "@The window is obscured by silk blinds."
+            }
+        })
+        
+        OnUse(Window, {
+            newline
+            if blinds_open {
+                "@You close the blinds." next
+                "@The room feels smaller now,| and the uneasy feeling goes away."
+                unset( blinds_open )
+            }
+            else {
+                "@You draw back the blinds." next
+                "@You can see outside now,| but it feels like something more than light"
+                " has entered the room."
+                set( blinds_open )
+            }
+        })
+        
+        OnOpen(Window, {
+            newline
+            "@The window is bolted shut." next
+            "@On closer inspection you see that it is bolted shut from the outside."
+        })
+    }
+}
+
+
+//
+// The mirror is outside the Bedroom scope
+// so the Pistol object can access it. Not
+// the most elegant solution...
+//
+Mirror: Furniture
+{
+    Name(Mirror, "mirror")
+
+    OnLook(Mirror, {
+        if not mirror_broken {
+            "@This is a large mirror set in an ornate wooden frame." next
+            "@Like almost everything else here,| it looks expensive." next
+            "@Looking more closely,| you see a small,| yellowed piece of paper attached to the frame." next
+            "@It reads:" next
+            "@<Under no circumstances should you break this mirror.>"
+        } else {
+            "@The mirror is shattered into a million pieces." next
+            "@You can't help but feel slightly responsible."
+        }
+    })
+
+    OnUse(Mirror, {
+        if not mirror_broken {
+            Window.Clear()
+            "@You look at yourself in the mirror." next
+            "@All in all,| you don't look too bad,| though you feel a little groggy." next
+            "@You notice a large bruise just above your left eye." next
+            "@Maybe that explains it..."
+        } else {
+            newline
+            "@You can't use the mirror because you broke it."
+        }
+    })
+
+    OnTake(Mirror, {
+        newline
+        
+        if not mirror_broken {
+            "@The mirror is way too big to take." next
+            "@You'd probably just break it,| and you know that's 700 years of bad luck." next
+            "@Or,| something like that anyway."
+        }
+        else {
+            "@You'd just cut your hand on the broken edges." next
+            "@It's not even worth trying."
+        }
+    })
+
+    OnTarget(Mirror, {
+        if equali(ItemUsed, Pistol) {
+            set(mirror_broken)
+            "@You shoot the mirror!" next
+            "@It shatters into many pieces." next
+            "@|.|.|././...|!" next
+            
+            if blinds_open {
+                music(0xBE)
+                "@The window instantly goes dark." next
+                "@Filled with sudden terror,| you turn to the door." next
+                text_blips(3)
+                "@It is no longer there." next
+                sound(SND_PING)
+                "@The fragments of the mirror are glowing." next
+                "@Something grips your mind." next
+                "@Y/o/u /f/e/e/l /y/o/u/r /s/e/n/s/e/s |s|l|o|w|l|y| drain away." next
+                "@This is the end,| it seems." next
+                music(4)
+                "@You see a bright sound||| and then darkness."
+
+                // Lock input               
+                "[1f 50]" wait
+            }
+
+            "@A small piece of paper fell from behind the shattered glass!"
+            
+            Item.SetLocationC( Receipt, Bedroom )
+        }
+    })
+}
+
+Bed: Furniture
+{
+    Name(Bed, "bed")
+
+    OnLook(Bed, {
+        "@This is a large canopy bed." next
+        "@It is very neatly made,| and it looks like nobody has slept in it for a while." next
+        "@In fact,| it seems to be slightly dusty." next
+
+        if not canopy_burnt {
+            "@Strangely,| the canopy seems to sag in the middle," prompt
+            " as though there is a small heavy object on top of it." next
+            "@It is too high for you to reach,| however."
+        }
+        else {
+            "@A hole is burned in the canopy where the stone dropped through."
+        }
+    })
+
+    OnUse(Bed, {
+        newline
+        "@You flop down on the bed." next
+        "@It's very comfy,| but you don't feel like sleeping right now."
+    })
+}
+    
+
+
+//
+// The drawing room
+//
+define has_paper = flag count("flags", 100)
+define looked_in_bin = flag count("flags", 100)
+
+DrawingRoom: Location
+{
+    Name(DrawingRoom, "drawing room")
+    Flag(DrawingRoom, count("flags", 100))
+    
+    ListExits(DrawingRoom, {
+        Exit("East", CentralRoom)
+    })
+    
+    OnInitialize(DrawingRoom, {
+        Item.SetLocationC( GammaStone, WasteBin )
+    })
+    
+    OnLook(DrawingRoom, {
+        if( FirstVisit )
+        {
+            "@You are in what appears to be a drawing room." next
+            "@Not in the sense of the 16th century term <withdrawing chamber,>| either." next
+            "@A literal drawing room,| as in,| a room where drawings are made." next
+            "@There is a large drafting board in the center of the room." next
+            "@There is a waste paper bin next to the drafting board." next
+            "@A stack of clean white paper sits on a stand next to it."
+        }
+        else if( Verbose )
+        {
+            "@You are in the drawing room." next
+            "@There is a large drafting board in the center of the room." next
+            "@There is a stack of paper next to the drawing board."
+        }
+        else 
+        {
+            "@You are in the drawing room."
+        }
+        
+    })
+    
+    //
+    // Drawing room furniture!
+    //
+    ListObjects(DrawingRoom, {
+        Object(DraftingBoard)
+        Object(WasteBin)
+        Object(PaperStack)
+    })
+    
+    DraftingBoard: Furniture
+    {
+        Name(DraftingBoard, "drafting board")
+        
+        OnLook(DraftingBoard, {
+            "@This is a large flat board,| set at a gentle angle for maximum comfort." next
+            "@It has a variety of clamps and things along the edges,| and a convenient tray for holding pencils." next
+            "@Just the thing for a budding illustrator or architect!"
+        })
+        
+        OnUse(DraftingBoard, {
+            newline
+            "@You're not really sure how to use a drafting board." next
+            "@You never did pay attention in art class." next
+            "@What a pity!"
+        })
+        
+        OnTake(DraftingBoard, {
+            newline
+            "@What is it with you and petty larceny?" next
+            "@Remember:|| the rules is,| if it's small enough to fit in your pocket,| it's fair game." next
+            "@If it's nailed to the floor,| you should leave well enough alone."
+        })
+    }
+    
+    WasteBin: Container
+    {
+        Name(WasteBin, "wastebin")
+        
+        OnLook(WasteBin, {
+            "@A simple wire mesh waste paper bin." 
+            
+            if not looked_in_bin {
+                next
+                "@Something about it seems strange,| as though it has a faint cloud of darkness hovering over it."
+            }
+        })
+        
+        OnOpen(WasteBin, {
+            if not looked_in_bin {
+                newline
+                "@You look inside the wastebin." next
+                "@There is a strange dark stone at the bottom." prompt
+                set( looked_in_bin )
+            }
+            OpenThis()
+        })
+        
+        OnTake(WasteBin, {
+            newline
+            "@Why would you want to haul around a waste bin?"
+        })
+    }
+    
+    PaperStack: Item
+    {
+        Name(PaperStack, "stack of paper")
+        
+        OnLook(PaperStack, {
+            "@A large stack of fresh,| clean sheets of paper." next
+            "@It looks enticing."
+        })
+        
+        OnUse(PaperStack, {
+            newline
+            "@Really now,| you shouldn't USE an entire stack of paper." next
+            "@Maybe you shoudl TAKE a single sheet."
+        })
+        
+        OnTake(PaperStack, {
+            newline
+            if not has_paper {
+                "@You take a piece of paper from the stack."
+                Item.SetLocationC( Paper, Player.Self )
+                set(has_paper)
+            }
+            else {
+                "@You already have a piece of paper." next
+                "@It wouldn't do to be greedy." next
+                "@Shouldn't you use what you've taken before grabbing another?"
+            }
+        })
+    }
+}
+    
+
+
+
+//
+// The Eastern Dungeon
+//
+
+define alpha_seal   = flag count("flags", 100)
+define beta_seal    = flag count("flags", 100)
+define gamma_seal   = flag count("flags", 100)
+define omega_seal   = flag count("flags", 100)
+
+Dungeon: Location
+{
+    Name(Dungeon, "dungeon")
+    Flag(Dungeon, count("flags", 100))
+    
+    ListExits(Dungeon, {
+        Exit("West", CentralRoom)
+    })
+    
+    OnLook(Dungeon, {
+        if( FirstVisit ) {
+            "@Wow,| this room seems out of place." next
+            "@You find yourself in a cold,| stone-walled room." next
+            "@It feels more like a dungeon than anything else." next
+            "@In the center there is a strange sort of pedestal." next
+            "@It seems to be made of granite,| and it has four round recesses in the top." next
+        }
+        else if( Verbose ) {
+            "@You are in the dungeon." next
+            "@The walls are made of smooth,| dark stone blocks." next
+            "@In the center of the room is a strange-looking pedestal."
+        }
+        else {
+            "@You are in the dungeon."
+        }
+    })
+    
+    //
+    // Objects
+    //
+    ListObjects(Dungeon, {
+        Object(Pedestal)
+    })
+    
+    Pedestal: Furniture
+    {
+        Name(Pedestal, "pedestal")
+        
+        OnLook(Pedestal, {
+            "@This strange pedestal is topped by a smooth round surface." next
+            "@It contains four round recesses,| each of which is marked with a symbol." next
+            "@The symbols are Alpha,| Beta,| Gamma,| and Omega."
+        })
+        
+        OnTake(Pedestal, {
+            newline
+            "@It doesn't look like you could even lift this." next
+            "@Somehow,| you feel like it would be a very,| very bad idea to try."
+        })
+        
+        OnUse(Pedestal, {
+            newline
+            "@You poke the pedestal." next
+            "@Nothing happens,| but the stone feels unnaturally cold."
+        })
+        
+        OnDropIn(Pedestal, {
+            if equali(ItemUsed, AlphaStone) {
+                sound(SND_PING)
+                DropInThis( ItemUsed )
+                set(alpha_seal)
+            }
+            else if equali(ItemUsed, BetaStone) {
+                sound(SND_PING)
+                DropInThis( ItemUsed )
+                set(beta_seal)
+            }
+            else if equali(ItemUsed, GammaStone) {
+                sound(SND_PING)
+                DropInThis( ItemUsed )
+                set(gamma_seal)
+            }
+            else if equali(ItemUsed, OmegaStone) {
+                sound(SND_PING)
+                DropInThis( ItemUsed )
+                set(omega_seal)
+            }
+            else {
+                newline
+                "@You place the {PrintItemUsed} on the pedestal." next
+                sound(SND_SHIELDREFLECT)
+                "@With a blinding flash,| the {PrintItemUsed} is flung onto the floor." next
+                DropOnFloorSilently( ItemUsed )
+                "@Seems that's not the right thing to put there."
+            }
+            
+            if alpha_seal and beta_seal and gamma_seal and omega_seal
+            {
+                sound(SND_PYRAMIDOPEN)
+                pause(60)
+                next
+                
+                Window.Switch(ActionWindow)
+                Window.Clear()
+                " "
+                Window.Switch(MainWindow)
+                Window.Clear()
+                
+                pause(60)
+                music(0x43)
+                
+                text_blips(3)
+                
+                "@The room fills with light,| and the walls disappear." next
+                "@You are standing in a misty meadow." next
+                "@A figure forms in the fog and begins moving toward you." next
+                "@The mist begins to lift,| and you finally remember what you came here for." next
+                
+                "@The figure stands before you and says|||" newline
+                "@<Before the knife gets rusty.>" next
+                "@You answer,||| <Before the soup gets cold.>" next
+                
+                "@The other laughs grimly." next
+                "@You join hands and walk into the dark trees that have replaced the mist." next
+                
+                music(0x2A)
+                "@There is much to do."
+                
+                longpause(40)
+                
+                "              ~ Fin"
+                
+                "[1f 50]" wait
+                
+            }
+            
+        })
+    }
+}

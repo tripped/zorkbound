@@ -1,0 +1,784 @@
+//
+// EB++ Scripting System
+//
+// This is a slightly augmented version of Rufus's ebpp binding, with
+// emphasis on calling conventions and including some extra utility
+// functions.
+//
+
+import asm65816
+
+
+
+//
+// Register mapping
+//
+
+// Important registers: stack pointer, return address
+define zero		= 0
+define sp		= 1
+define ra		= 2
+
+define strc		= 5		// temp string size counter
+
+define result	= 8
+define result2	= 9
+
+//
+// Internal registers; reserved for use by this module
+//
+define i0		= 10
+define i1		= 11
+define i2		= 12
+define i3		= 13
+define i4		= 14
+define i5		= 15
+define i6		= 16
+define i7		= 17
+define i8		= 18
+define i9		= 19
+
+//
+// Argument registers
+//
+define arg0		= 20
+define arg1		= 21
+define arg2		= 22
+define arg3		= 23
+define arg4		= 24
+define arg5		= 25
+define arg6		= 26
+define arg7		= 27
+define arg8		= 28
+define arg9		= 29
+
+//
+// Temporary variables
+//
+// May be modified freely. As a consequence, you must save
+// their values to the stack if you want to guarantee that
+// they are not modified after calling another function.
+//
+define var0		= 30
+define var1		= 31
+define var2		= 32
+define var3		= 33
+define var4		= 34
+define var5		= 35
+define var6		= 36
+define var7		= 37
+define var8		= 38
+define var9		= 39
+define var10	= 40
+define var11	= 41
+define var12	= 42
+define var13	= 43
+define var14	= 44
+define var15	= 45
+define var16	= 46
+define var17	= 47
+define var18	= 48
+define var19	= 49
+
+//
+// Saved temporary variables
+//
+// Any function modifying these is obligated to return them
+// to their previous state before returning.
+//
+define svar0	= 50
+define svar1	= 51
+define svar2	= 52
+define svar3	= 53
+define svar4	= 54
+define svar5	= 55
+define svar6	= 56
+define svar7	= 57
+define svar8	= 58
+define svar9	= 59
+
+//
+// Library variables.
+//
+// Intended to be yoinked for private use by addon libraries.
+// Such libraries should use these instead of the varn temps,
+// so that a user of the library does not have to worry about
+// saving the contents of their own variables between library
+// function calls.
+//
+define lvar0	= 60
+define lvar1	= 61
+define lvar2	= 62
+define lvar3	= 63
+define lvar4	= 64
+define lvar5	= 65
+define lvar6	= 66
+define lvar7	= 67
+define lvar8	= 68
+define lvar9	= 69
+
+
+//
+// STARTUP
+//
+// Performs necessary initialization and then calls the
+// user-defined entry point function.
+//
+
+command STARTUP( main ) {
+	newgame_location(3072,1024)
+	newgame_startup(__startup)
+	ROM[__main_vector] = main
+}
+
+__main_vector: 0
+
+__startup:
+	hide_party
+	lock_movement(-1)
+	window_closeall
+
+	// Clear memory
+	memseti(0x316000, 0, 0x1000)
+	memseti(0x7E98B8, 0, 0x116)
+	
+	// Initialize stack pointer
+	setvar	(sp, 0x318000)
+	
+	// Load the "main" startup vector and call it
+	load32	(i0, __main_vector)
+	pinvoke	(i0)
+	
+	// Exit program
+	window_open(1)
+	"@Exiting successfully...[13]"
+	window_closetop()
+	"[02]"
+
+
+	
+	
+
+//
+// Utility functions
+//
+
+// Allocates space on the stack, storing
+// the address of the allocated block in $d
+command alloc(d, size)
+{
+	// $sp -= size
+	sub		(sp, sp, size)
+	
+	// MEM[sp - 4] = size
+	addi	(i1, sp, -4)
+	setvar	(i0, size)
+	pstore32	(i0, i1)
+	
+	// $d = $sp
+	copyvar	(d, sp)
+	
+	// $sp -= 4
+	addi	(sp, sp, -4)
+}
+
+// Deallocates an allocated block
+command free(d)
+{
+	copyvar	(i0, d)
+	
+	// $i0 = alloc_size
+	addi	(i0, i0, -4)
+	pload32	(i0, i0)
+	
+	// $sp += (alloc_size + 4)
+	add		(sp, sp, i0)
+	addi	(sp, sp, 4)
+}
+
+
+
+
+//
+// EB++ bindings.
+//
+// For the most part, these are borrowed from Rufus's ebpp module.
+// I renamed a few of them because I'm picky. :D
+//
+command adr24(a)			"[{byte[0] a} {byte[1] a} {byte[2] a}]"
+
+command asmcall(addr)		"[1B 07 {adr24(addr)}]"
+
+command printb(r,z)			"[1B 0A {byte r} {byte z}]"
+command printd(r,z)			"[1B 0B {byte r} {byte z}]"
+command printh(r,z)			"[1B 0C {byte r} {byte z}]"
+
+command pjump(r)			"[1B 0D {byte r}]"
+command pcall(r)			"[1B 0E {byte r}]"
+
+
+//
+// Arithmetic commands
+//
+command add(d,l,r)			"[1b 20 {byte d} {byte l} {byte r}]"
+command sub(d,l,r)			"[1b 21 {byte d} {byte l} {byte r}]"
+command mul(d,l,r)			"[1b 22 {byte d} {byte l} {byte r}]"
+command div(d,m,l,r)		"[1b 23 {byte d} {byte m} {byte l} {byte r}]"
+command and_(d,l,r)			"[1b 24 {byte d} {byte l} {byte r}]"
+command or_(d,l,r)			"[1b 25 {byte d} {byte l} {byte r}]"
+command xor(d,l,r)			"[1b 26 {byte d} {byte l} {byte r}]"
+
+command addi(d,l,r)			"[1B 30 {byte d} {byte l} {long r}]"
+command subi(d,l,r)			"[1B 31 {byte d} {byte l} {long r}]"
+command muli(d,l,r)			"[1B 32 {byte d} {byte l} {long r}]"
+command divi(d,m,l,r)		"[1B 33 {byte d} {byte m} {byte l} {long r}]"
+command andi(d,l,r)			"[1B 34 {byte d} {byte l} {long r}]"
+command ori(d,l,r)			"[1B 35 {byte d} {byte l} {long r}]"
+command xori(d,l,r)			"[1B 36 {byte d} {byte l} {long r}]"
+
+command incr(d)				"[1B 3A {byte d} {byte d}]"
+command decr(d)				"[1B 3B {byte d} {byte d}]"
+command shl(d)				"[1B 3C {byte d} {byte d}]"
+command shr(d)				"[1B 3D {byte d} {byte d}]"
+
+
+//
+// Comparison
+//
+command eq(l,r)			"[1B 40 {byte i0} {byte l} {byte r}]"
+command ne(l,r)			"[1B 41 {byte i0} {byte l} {byte r}]"
+command gte(l,r)			"[1B 42 {byte i0} {byte l} {byte r}]"
+command lte(l,r)			"[1B 43 {byte i0} {byte l} {byte r}]"
+command gt(l,r)				"[1B 44 {byte i0} {byte l} {byte r}]"
+command lt(l,r)				"[1B 45 {byte i0} {byte l} {byte r}]"
+
+command eqi(l,C)			"[1B 50 {byte i0} {byte l} {long C}]"
+command nei(l,C)			"[1B 51 {byte i0} {byte l} {long C}]"
+command gtei(l,C)			"[1B 52 {byte i0} {byte l} {long C}]"
+command ltei(l,C)			"[1B 53 {byte i0} {byte l} {long C}]"
+command gti(l,C)			"[1B 54 {byte i0} {byte l} {long C}]"
+command lti(l,C)			"[1B 55 {byte i0} {byte l} {long C}]"
+
+//
+// Conditional branching
+//
+command beq(s,t,target)		{ eq(s,t) "[1b 03 {long target}]" }
+command bne(s,t,target)		{ ne(s,t) "[1b 03 {long target}]" }
+command bgt(s,t,target)		{ gt(s,t) "[1b 03 {long target}]" }
+command blt(s,t,target)		{ lt(s,t) "[1b 03 {long target}]" }
+
+command bgte(s,t,target)	{ gte(s,t) "[1b 03 {long target}]" }
+command blte(s,t,target)	{ lte(s,t) "[1b 03 {long target}]" }
+
+command beqi(s,t,target)	{ eqi(s,t) "[1b 03 {long target}]" }
+command bnei(s,t,target)	{ nei(s,t) "[1b 03 {long target}]" }
+command bgti(s,t,target)	{ gti(s,t) "[1b 03 {long target}]" }
+command blti(s,t,target)	{ lti(s,t) "[1b 03 {long target}]" }
+
+command equal(s,t)			eq(s,t)
+command equali(s,C)			eqi(s,C)
+
+command istrue(s)			nei(s,0)
+command isfalse(s)			eqi(s,0)
+
+//
+// Load/store
+//
+command load8(r, addr)		"[1B 10 {byte r} {adr24(addr)}]"
+command load16(r, addr)		"[1B 11 {byte r} {adr24(addr)}]"
+command load24(r, addr)		"[1B 12 {byte r} {adr24(addr)}]"
+command load32(r, addr)		"[1B 13 {byte r} {adr24(addr)}]"
+
+command store8(r, addr)		"[1B 14 {byte r} {adr24(addr)}]"
+command store16(r, addr)	"[1B 15 {byte r} {adr24(addr)}]"
+command store24(r, addr)	"[1B 16 {byte r} {adr24(addr)}]"
+command store32(r, addr)	"[1B 17 {byte r} {adr24(addr)}]"
+
+
+command memset(r,v,s)		"[1B 65 {byte r} {byte v} {byte s}]"
+command memseti(addr,val,size) {
+	setvar(i0,addr)
+	setvar(i1,size)
+	memset(i0,val,i1)
+}
+
+
+command setvar(r,C)			"[1B 19 {byte r} {long C}]"
+command copyvar(d, s)		"[1b 29 {byte d} {byte s}]"
+
+command getresult(r)		"[1B 1A {byte r}]"
+command getarg(r)			"[1B 1B {byte r}]"
+command getcounter(r)		"[1B 1C {byte r}]"
+command setresult(r)		"[1B 1D {byte r}]"
+command setarg(r)			"[1B 1E {byte r}]"
+command setcounter(r)		"[1B 1F {byte r}]"
+
+//
+// Load/store indirect
+//
+command pload8(d,s)			"[1B 70 {byte d} {byte s}]"
+command pload16(d,s)		"[1B 71 {byte d} {byte s}]"
+command pload24(d,s)		"[1B 72 {byte d} {byte s}]"
+command pload32(d,s)		"[1B 73 {byte d} {byte s}]"
+
+command pstore8(s,d)		"[1B 74 {byte s} {byte d}]"
+command pstore16(s,d)		"[1B 75 {byte s} {byte d}]"
+command pstore24(s,d)		"[1B 76 {byte s} {byte d}]"
+command pstore32(s,d)		"[1B 77 {byte s} {byte d}]"
+
+//
+// Jumps, links, etc.
+//
+command j(target) {
+	goto(target)
+}
+
+command jr(r) {
+	pjump(r)
+}
+
+
+
+command push(reg) {
+	addi		(sp,sp,-4)
+	pstore32	(reg,sp)
+}
+
+command pull(reg) {
+	pload32		(reg,sp)
+	addi		(sp,sp,4)
+}
+
+
+
+//
+// Calling convention support
+//
+// The invoke() and pinvoke() macros are used to call functions;
+// invoke() takes an integer address and pinvoke() takes a register
+// index. Both compute the return address and push it onto the stack.
+//
+// The return macro pulls the return address and jumps back to it.
+//
+
+// Whoa, why do we need this __link crap? Internal labels are supported
+// now!
+
+command invoke(function) {
+	addi	(sp,sp,-4)
+	asmcall	(__link)	// $ra = PC + 9
+	pstore32(ra,sp)
+	j		(function)
+}
+
+command pinvoke(r) {
+	addi	(sp,sp,-4)
+	asmcall	(__link)
+	pstore32(ra,sp)
+	jr		(r)
+	"[00 00]" // padding :3
+}
+
+command return {
+	pull	(ra)
+	jr		(ra)
+}
+
+command returnval(v) {
+	setvar(result,v)
+	return
+}
+
+
+//
+// Input
+//
+
+command readnumber(digits)
+{
+	input(digits)
+	getresult(result)
+	clearline
+}
+
+
+
+//
+// Event flag loading
+//
+
+command loadflag(d,s) {
+	copyvar(i0,s)
+	asmcall(__loadflag_helper)
+	copyvar(d,i0)
+}
+
+define __ra_loc		= 0x316508
+define __ra_loc2	= 0x31650a
+define __strc_loc	= 0x316514
+define __strc_loc2	= 0x316516
+define __i0_loc		= 0x316528
+define __i0_loc2	= 0x31652a
+define __i1_loc		= 0x31652c
+define __i1_loc2	= 0x31652e
+define __i2_loc		= 0x316530
+define __i2_loc2	= 0x316532
+
+
+__loadflag_helper:
+	LDA_al	(__i0_loc)
+	JSL		(0xC21628)
+	//JSL		(0xEE9CE0)
+	STA_al	(__i0_loc)
+	LDA_i	(0x0000)
+	STA_al	(__i0_loc2)
+	RTL
+
+
+command setflag(s) {
+	copyvar(i0,s)
+	asmcall(__setflag_helper)
+}
+
+__setflag_helper:
+	LDA_al	(__i0_loc)
+	LDX_i	(1)
+	JSL		(0xc2165e)
+	//JSL		(0xEE9C77)
+	RTL
+	
+
+
+//
+// Helper: __link
+//
+// Stores PC+9 in the $ra register.
+//
+__link:
+	REP		(0x31)
+	// Get text system stack frame: #$96AA + ($97B8) * 0x1b
+	SEP		(0x20)
+	LDA_8	(0x1B)
+	STA_al	(0x004202)
+	LDA_a	(0x97B8)
+	STA_al	(0x004203)
+	REP		(0x20)
+	
+	LDA_i	(0x96AA)	
+	CLC					
+	NOP		// wait for hardware to finish multiplying
+	NOP
+	ADC_al	(0x004216)
+		
+	// Load PC from computed address and copy to $ra
+	TAX
+	LDA_x	(0x0000)
+	CLC
+	ADC_i	(9)
+	STA_al	(__ra_loc)
+	LDA_x	(0x0002)
+	STA_al	(__ra_loc2)
+	RTL
+	
+
+//
+// Helper: __linkt:
+//
+// Like __link, but stores PC+7 in $i0 instead
+//
+__linkt:
+	REP		(0x31)
+	// Get text system stack frame: #$96AA + ($97B8) * 0x1b
+	SEP		(0x20)
+	LDA_8	(0x1B)
+	STA_al	(0x004202)
+	LDA_a	(0x97B8)
+	STA_al	(0x004203)
+	REP		(0x20)
+	
+	LDA_i	(0x96AA)	
+	CLC					
+	NOP		// wait for hardware to finish multiplying
+	NOP
+	ADC_al	(0x004216)
+		
+	// Load PC from computed address and copy to $i0
+	TAX
+	LDA_x	(0x0000)
+	CLC
+	ADC_i	(7)
+	STA_al	(__i0_loc)
+	LDA_x	(0x0002)
+	STA_al	(__i0_loc2)
+	RTL
+
+
+
+
+command loadstr(r) {
+	initstr()
+	appendstr(r)
+	endstr()
+}
+
+command loadstri(adr) {
+	initstr()
+	appendstri(adr)
+	endstr()
+}
+
+//
+// Initializes the temporary string at $97D7 to empty
+//
+command initstr()
+{
+	// just set the length counter to zero
+	setvar(strc, 0)
+}
+
+
+//
+// Appends the string at the address contained in the given register
+// to the temporary string at $97D7
+//
+command appendstr(r) {
+	copyvar(i0,r)
+	asmcall(__appendstr_helper)
+}
+
+command appendstri(adr) {
+	setvar(i0,adr)
+	asmcall(__appendstr_helper)
+}
+
+command endstr() {
+	asmcall(__endstr_helper)
+}
+
+command capstr() {
+	asmcall(__capitalize_tempstr)
+}
+
+//
+// Loads a menu option string from a specified address
+//
+__appendstr_helper:
+{
+	REP		(0x31)
+	
+	// Allocate stack space
+	PHD
+	TDC
+	ADC_i	(0xfffc)
+	TCD
+	
+	// Copy address from register $i0 to $00-$03
+	LDA_al	(__i0_loc)
+	STA_d	(0x00)
+	LDA_al	(__i0_loc2)
+	STA_d	(0x02)
+	
+	// Copy data from that address to $97D7 until reaching an [02]
+	SEP		(0x20)
+	LDY_i	(0)
+	
+	LDA_al	(__strc_loc)
+	TAX
+	
+	loop:
+		LDA_dly		(0x00)
+		CMP_8		(0x02)
+		
+		BEQ			(8)			// break out of loop
+
+		STA_x		(0x97D7)	// 3 bytes
+		INY
+		INX
+		JMP			(loop)		// 3 bytes
+	REP		(0x20)
+	
+	// Null-terminate the string
+	STZ_x	(0x97D7)
+	
+	// Save the updated strc register
+	TXA
+	STA_al	(__strc_loc)
+	
+	PLD
+	RTL
+}
+
+
+// Capitalizes the temporary string
+__capitalize_tempstr:
+{
+	SEP		(0x20)
+	
+	LDA_a	(0x97D7)
+	
+	// if A >= 91 and < AB, subtract 0x20
+	CMP_8	(0xAB)
+	BCC		(3)		// branch if A < 0xAB
+	JMP		(exit)
+	
+	CMP_8	(0x91)
+	BCS		(3)
+	JMP		(exit)
+	
+	SEC
+	SBC_8	(0x20)
+	STA_a	(0x97D7)
+	
+exit:
+	REP		(0x20)
+	RTL
+}
+
+__endstr_helper:
+{
+	PHD
+	TDC
+	ADC_i	(0xffe4)
+	TCD
+	
+	// Set up arguments:
+	// $0e-$11 = $007E:97D7
+	// $12-$15 = $0000:0000
+	LDA_i	(0x97D7)
+	STA_d	(0x0e)
+	LDA_i	(0x007E)
+	STA_d	(0x10)
+	
+	STZ_d	(0x12)
+	STZ_d	(0x14)
+	
+	// Now call $C1/13D1 through our local jumper
+	JSL		(0xC1FFFC)
+
+	PLD
+	RTL
+}
+
+// There's a tiny bit of nullspace we can use to insert
+// a local subroutine call to $C1/13D1:
+ROM[0xC1FFFC] = {
+	JSR(0x13D1)
+	RTL
+}
+
+
+
+
+//
+//
+// Miscellaneous text formatting helpers
+//
+//
+
+//
+// Disables text "printing" up until the next wait/prompt,
+// causing text to be displayed instantly.
+//
+command fastline
+{
+	asmcall(0xC3E4E0)
+}
+
+//
+// Sets a specified window's title
+//
+command settitle(win, title)
+{
+	setvar(i0,win)
+	setvar(i1,ptr)
+	asmcall(__settitle_helper)
+	clearline
+	//"[18 06]"
+	goto(skip)
+	ptr: title "[00]"
+	skip:
+}
+
+command settitle_reg(win, reg)
+{
+	// this is a bit of a hack, but we need the
+	// string to be null-terminated
+	initstr()
+	appendstr(reg)
+	capstr()
+	
+	setvar(i0,win)
+	setvar(i1, 0x7E97D7)
+	asmcall(__settitle_helper)
+}
+
+__settitle_helper:
+	REP		(0x31)
+	PHD
+	TDC
+	ADC_i	(0xffee)
+	TCD
+	
+	
+	LDA_al	(__i1_loc)
+	STA_d	(0x0e)
+	LDA_al	(__i1_loc2)
+	STA_d	(0x10)
+	
+	LDX_i	(255)
+	LDA_al	(__i0_loc)
+
+	JSL		(0xC2032B)
+	
+	PLD
+	RTL
+
+
+command cleartitle(win)
+{
+	setvar(i0,win)
+	asmcall(__cleartitle_helper)
+}
+	
+__cleartitle_helper:
+{
+	REP		(0x31)
+	
+	LDA_al	(__i0_loc)
+	
+	ASL
+	TAX
+	LDA_x	(0x88E4)
+	LDY_i	(0x0052)
+	JSL		(0xC08FF7)
+	CLC
+	ADC_i	(0x868B)
+	TAY
+	PHY
+	
+	//
+	// g_title_alloc[ window.titlenum - 1 ] = 0xFFFF
+	//
+	LDA_y	(0)
+	AND_i	(0x00FF)
+	DEC
+	ASL
+	TAY
+	LDA_i	(0xFFFF)
+	STA_y	(0x894E)
+	
+
+	
+	//
+	// window.titlenum = 0
+	//
+	PLY
+	
+	SEP		(0x20)
+	LDA_8	(0)
+	STA_y	(0)
+	REP		(0x20)
+
+	RTL
+}
+

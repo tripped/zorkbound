@@ -1,0 +1,319 @@
+//
+// ZorkBound
+//
+// Dynamic menus.
+//
+// RESERVED REGISTERS: 220-224
+//
+
+import Script
+
+
+define tvar0	= 220
+define tvar1	= 221
+define tvar2	= 222
+
+//
+// Memory map
+//  $31:6A00		Number of menu items constructed
+//  $31:6A02		Temporary menu display string
+//  $31:6A10-4F		Menu option result values
+//
+
+define item_count	= 0x316A00
+define temp_str		= 0x316A02
+define values_base	= 0x316A10
+
+//
+// Begin a menu
+//
+command BeginC()
+{
+	setvar	(tvar0, 0)
+	store8	(tvar0, item_count)
+}
+
+Begin:
+	setvar	(tvar0, 0)
+	store8	(tvar0, item_count)
+	return
+
+
+command DisplayC()
+{
+	load8	(tvar0, item_count)
+	
+	if equal(tvar0, zero) {
+		setvar(result,0)
+		prompt
+	}
+	else {
+		muli	(tvar0, tvar0, 256)	// faster than 8 shifts :P
+		ori		(tvar0, tvar0, "[1c 07 00 02]")	
+		call	(temp_str)
+		
+		GetValues(result,result2)
+	}
+}
+
+Display:
+	load8	(tvar0, item_count)
+	
+	if equal(tvar0, zero) {
+		setvar(result,0)
+		prompt
+		return
+	}
+	muli	(tvar0, tvar0, 256)
+	ori		(tvar0, tvar0, "[1c 07 00 02]")
+	store32	(tvar0, temp_str)
+	
+	call	(temp_str)
+	"[11][12]"
+	
+	GetValues(result,result2)
+	
+	return
+
+
+
+command Section(columns)
+{
+	load8	(tvar0, item_count)
+	
+	if equal(tvar0, zero) {
+		setvar(result,0)
+	}
+	else {	
+		setvar	(tvar0, "[1c 0c {byte columns} 02]")
+		store32	(tvar0, temp_str)
+
+		call	(temp_str)
+	}
+}
+
+
+command DisplayVerticalC(columns)
+{
+	load8	(tvar0, item_count)
+	
+	if equal(tvar0, zero) {
+		setvar(result,0)
+		prompt
+	}
+	else {	
+		setvar	(tvar0, "[1c 0c {byte columns} 02]")
+		store32	(tvar0, temp_str)
+
+		call	(temp_str)
+		"[11]"
+		
+		GetValues(result,result2)
+	}
+}
+
+DisplayVertical:
+	load8	(tvar0, item_count)
+	
+	if equal(tvar0,zero) {
+		setvar(result,0)
+		prompt
+		return
+	}
+	
+	muli	(tvar0, arg0, 256)
+	ori		(tvar0, tvar0, "[1c 0c 00 02]")
+	store32	(tvar0, temp_str)
+	
+	call	(temp_str)
+	"[11]"
+	
+	GetValues(result,result2)
+	
+	return
+
+
+
+//
+// Creates a menu option from a string
+//
+command OptionFromString( str, value )
+{
+	OptionFromAddress( optstr, value )
+	
+	goto(skip)
+	optstr: str eob
+	skip:
+}
+
+//
+// Creates a menu option from a text address
+//
+command OptionFromAddress( adr, value )
+{
+	loadstri(adr)
+	Value(value)
+}
+
+//
+// Creates a menu option from the address contained in a register
+//
+command OptionFromRegister( reg, value )
+{
+	//loadstr(reg)
+	
+	initstr()
+	appendstr(reg)
+	capstr()
+	endstr()
+	
+	Value(value)
+}
+
+
+//
+// Adds a string option
+//
+command String( str )
+{
+	//loadstri(embedded)
+	
+	initstr()
+	appendstri(embedded)
+	capstr()
+	endstr()
+	
+	goto(skip)
+	embedded: str eob
+	skip:
+}
+
+command Register( reg )
+{
+	//loadstr(reg)
+	
+	initstr()
+	appendstr(reg)
+	capstr()
+	endstr()
+	
+}
+
+
+//
+// Begins a multi-string menu option
+//
+command BeginOption( )
+{
+	initstr()
+}
+
+// Appends a string to the current menu option
+command AppendString(str)
+{
+	appendstri	(optstr)
+	goto(skip)
+	optstr: str eob
+	skip:
+}
+
+// Appends the text at the specified address to the current menu option
+command AppendAddress(adr)
+{
+	appendstri	(adr)
+}
+
+// Appends the text at the address contained in the specified register
+command AppendRegister(reg)
+{
+	appendstr	(reg)
+}
+
+//
+// Ends the multi-string menu option and specifies its value
+//
+command EndOption(value)
+{
+	endstr()
+	Value(value)
+}
+
+command EndOption2(value1, value2)
+{
+	endstr()
+	Value(value1)
+	Value2(value2)
+}
+
+
+//
+// Adds a value to the menu result-value table
+//
+command Value( value )
+{
+	setvar	(tvar2, value)
+	ValueFromRegister(tvar2)
+}
+
+command SecondaryValue( value )
+{
+	setvar	(tvar2, value)
+	SecondaryFromRegister(tvar2)
+}
+
+command ValueFromRegister( reg )
+{
+	load8	(tvar0, item_count)
+
+	// Store result value for this option	
+	muli	(tvar1, tvar0, 8)
+	addi	(tvar1, tvar1, values_base)
+
+	pstore32(reg, tvar1)
+		
+	// Increment item count
+	incr	(tvar0)
+	store8	(tvar0, item_count)
+}
+
+//
+// Sets a secondary value for the last-set value item.
+// REQUIREMENTS: MUST BE USED _AFTER_ SETTING A PRIMARY VALUE.
+//
+command SecondaryFromRegister( reg )
+{
+	load8	(tvar0, item_count)
+	decr	(tvar0)	// -1, since the last Value() incremented item count
+	muli	(tvar1, tvar0, 8)
+	addi	(tvar1, tvar1, values_base)
+	addi	(tvar1, tvar1, 4)
+	
+	pstore32(reg, tvar1)
+	
+	// Don't increment item count
+}
+
+//
+// Copies the result value of the last menu displayed into
+// the specified register
+//
+command GetValues(reg1, reg2)
+{
+	getresult(reg1)
+	
+	if not equal(reg1,zero) {
+		
+		decr	(reg1)
+		muli	(reg1, reg1, 8)
+		addi	(reg1, reg1, values_base)
+		copyvar	(reg2, reg1)
+		
+		pload32	(reg1, reg1)
+		
+		addi	(reg2, reg2, 4)
+		pload32	(reg2, reg2)
+	}
+}
+
+
+
